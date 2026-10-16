@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JAT Golden Grains Trading</title>
+  <link rel="stylesheet" href="css/style.css?v=20261016">
+</head>
+<body>
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <div class="login-brand">
+        <div class="login-logo-wrap"><img class="login-logo" src="assets/logo-jat.jpg" alt="JAT Golden Grains Trading logo"></div>
+        <div class="login-brand-text">
+          <h1>JAT Golden Grains Trading</h1>
+          <p class="muted">Business Management System</p>
+        </div>
+      </div>
+      <form id="loginForm">
+        <label>Username</label>
+        <input id="username" type="text" autocomplete="username" placeholder="Enter username" required>
+        <label>Password</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="Enter password" required>
+        <button class="primary-btn full" type="submit">LOGIN</button>
+        <p id="loginError" class="error"></p>
+      </form>
+    </div>
+  </div>
+
+  <div id="app" class="app hidden">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <img class="sidebar-logo" src="assets/logo-jat.jpg" alt="JAT Golden Grains Trading logo">
+        <div>
+          <strong>JAT Golden Grains</strong>
+          <small>Trading</small>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-item active" data-section="dashboard">▦ <span>Dashboard</span></button>
+        <button class="nav-item" data-section="pos">▣ <span>POS / Sales</span></button>
+        <button class="nav-item admin-only" data-section="products">▤ <span>Mga Produkto</span></button>
+        <button class="nav-item" data-section="inventory">◫ <span>Inventory</span></button>
+        <button class="nav-item" data-section="customers">♙ <span>Customer's List</span></button>
+        <button class="nav-item" data-section="orders">☷ <span>Customer's Order</span></button>
+        <button class="nav-item admin-only" data-section="expenses">₱ <span>Expenses</span></button>
+        <button class="nav-item admin-only" data-section="purchases">▥ <span>My Purchases</span></button>
+        <button class="nav-item admin-only" data-section="users">♙ <span>User Management</span></button>
+        <button class="nav-item" data-section="reports">▥ <span>Reports</span></button>
+      </nav>
+
+      <button id="logoutBtn" class="logout-btn">↪ <span>Logout</span></button>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button id="menuBtn" class="menu-btn">☰</button>
+        <div>
+          <h2 id="pageTitle">Dashboard</h2>
+          <p id="pageSubtitle">Business overview for today</p>
+        </div>
+        <div class="user-area">
+          <div class="avatar" id="avatar">A</div>
+          <div>
+            <strong id="currentUser">Admin</strong>
+            <span id="currentRole">ADMIN</span>
+          </div>
+        </div>
+      </header>
+
+      <section id="dashboard" class="page-section active">
+        <div class="section-heading">
+          <div>
+            <h3>Dashboard</h3>
+            <p>Monitor today's business activity at a glance.</p>
+          </div>
+          <div class="button-group dashboard-admin-actions"><div class="date-badge" id="todayDate"></div><button id="clearDatabaseBtn" class="danger-btn admin-only" style="display:none">Clear Database</button></div>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card">
+            <span class="stat-icon">₱</span>
+            <div><small>TODAY'S SALES</small><h3 id="salesValue">₱0.00</h3></div>
+          </article>
+          <article class="stat-card">
+            <span class="stat-icon">↗</span>
+            <div><small>TODAY'S GROSS PROFIT</small><h3 id="profitValue">₱0.00</h3></div>
+          </article>
+          <article class="stat-card">
+            <span class="stat-icon">−</span>
+            <div><small>TODAY'S EXPENSES</small><h3 id="expensesValue">₱0.00</h3></div>
+          </article>
+          <article class="stat-card">
+            <span class="stat-icon">!</span>
+            <div><small>LOW STOCK ITEMS</small><h3 id="lowStockValue">0</h3></div>
+          </article>
+        </div>
+
+        <div class="content-grid">
+          <article class="panel inventory-panel">
+            <div class="panel-head"><div><h3>Inventory</h3><p>Available rice stocks</p></div><button class="text-btn" data-section-jump="inventory">View Inventory</button></div>
+            <div class="inventory-cards">
+              <div class="stock-card"><span>25KG</span><strong id="stock25">0</strong><small>pcs.</small></div>
+              <div class="stock-card"><span>10KG</span><strong id="stock10">0</strong><small>pcs.</small></div>
+              <div class="stock-card"><span>5KG</span><strong id="stock5">0</strong><small>pcs.</small></div>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>Low Stock Items</h3><p>Products needing attention</p></div></div>
+            <div id="lowStockList" class="list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="pos" class="page-section">
+        <div class="pos-layout">
+          <div class="panel customer-panel">
+            <div class="panel-head"><div><h3>Customer Details</h3><p>Information applies to the whole transaction.</p></div></div>
+            <div class="form-grid pos-customer-fields">
+              <div><label>Customer's Name</label><input id="posCustomer" list="customerOptions" placeholder="Select or type customer name"><datalist id="customerOptions"></datalist></div>
+              <div><label>Address</label><input id="posAddress" type="text" placeholder="Customer address"></div>
+              <div><label>Contact No.</label><input id="posContact" type="text" placeholder="Contact number"></div>
+              <div><label>Sales Invoice</label><input id="posInvoice" type="text" placeholder="Enter sales invoice"></div>
+              <div><label>Payment Mode</label><select id="posPaymentMode"><option>Cash</option><option>GCash</option><option>Maya</option><option>BankTrans</option><option>Utang</option></select></div>
+              <div><label>Status</label><select id="posStatus"><option>For Pickup</option><option>For Delivery</option></select></div>
+            </div>
+          </div>
+
+          <div class="panel cart-panel">
+            <div class="panel-head cart-panel-head">
+              <div><h3>Cart</h3><p>Add one or more products to this transaction.</p></div>
+              <button id="addToCart" class="primary-btn cart-top-add">+ Add to Cart</button>
+            </div>
+            <div class="cart-add-grid">
+              <div><label>Product</label><select id="posProduct"></select></div>
+              <div><label>Qty.</label><input id="posQty" type="number" min="1" value="1"></div>
+              <div><label>Price</label><input id="posPrice" type="number" min="0" step="0.01"></div>
+            </div>
+            <div class="table-wrap cart-table-wrap">
+              <table><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th><th>Action</th></tr></thead><tbody id="posCartTable"></tbody></table>
+              <div id="cartEmptyNote" class="cart-empty-note">Cart is empty. Add products above.</div>
+            </div>
+            <div class="pos-summary"><span>Cart Total</span><strong id="posTotal">₱0.00</strong></div>
+            <div class="panukli-bar"><span>Panukli Fund: <strong id="panukliDashboard">₱0.00</strong></span><button id="addPanukliBtn" class="text-btn">+ Add Panukli</button></div>
+            <div class="cash-summary-grid">
+              <div id="cashFields"><label>Panukli / Cash Received</label><input id="posCashReceived" type="number" min="0" step="0.01" placeholder="Amount received"></div>
+              <div><label>Sukli</label><div class="readonly-field" id="posChange">₱0.00</div></div>
+            </div>
+            <button id="processSale" class="primary-btn process-sale-btn">Process Sale</button>
+            <p id="posMessage" class="success"></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="products" class="page-section admin-only-section">
+        <div class="section-heading"><div><h3>Mga Produkto</h3><p>Manage dealer and retail prices and stock.</p></div><div class="button-group product-action-buttons"><button id="addProductBtn" class="primary-btn">+ Add Product</button><button id="editProductBtn" class="primary-btn secondary-btn" disabled>Edit</button><button id="deleteProductBtn" class="danger-btn" disabled>Delete</button></div></div>
+        <div class="panel table-wrap">
+          <table><thead><tr><th>ID</th><th>Supplier Name</th><th>Address</th><th>Contact No.</th><th>Product</th><th>KILO</th><th>Dealer Price</th><th>Retail Price</th><th>Stock</th></tr></thead>
+          <tbody id="productsTable"></tbody></table>
+        </div>
+      </section>
+
+      <section id="inventory" class="page-section">
+        <div class="section-heading"><div><h3>Inventory</h3><p>Current available stocks.</p></div><div class="button-group"><button id="saveInventoryCSV" class="primary-btn">SAVE to CSV</button><button id="saveInventoryPDF" class="primary-btn">SAVE to PDF</button></div></div>
+        <div class="panel table-wrap"><table><thead><tr><th>ID</th><th>Product</th><th>KILO</th><th>Available</th><th>Inventory Cost</th></tr></thead><tbody id="inventoryTable"></tbody></table></div>
+      </section>
+
+      <section id="customers" class="page-section">
+        <div class="section-heading"><div><h3>Customer's List</h3><p>Customer records.</p></div><div class="button-group customer-action-buttons"><button id="addCustomerBtn" class="primary-btn">+ Add Customer</button><button id="editCustomerBtn" class="primary-btn secondary-btn" disabled>Edit</button><button id="deleteCustomerBtn" class="danger-btn" disabled>Delete</button><button id="paymentHistoryBtn" class="primary-btn secondary-btn" disabled>Payment History</button><button id="recordPaymentBtn" class="primary-btn" disabled>Record Payment</button></div></div>
+        <div class="panel table-wrap"><table><thead><tr><th>Customer</th><th>Contact</th><th>Address</th><th>Store Name</th><th>Balance</th><th>25KG</th><th>10KG</th><th>5KG</th></tr></thead><tbody id="customersTable"></tbody></table></div>
+      </section>
+
+      <section id="orders" class="page-section">
+        <div class="section-heading"><div><h3>Customer's Order</h3><p>Pending orders for pickup and delivery.</p></div><button id="deliveryHistoryBtn" class="primary-btn secondary-btn">Delivery History</button></div>
+        <div class="panel table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Customer's Name</th><th>Address</th><th>Contact No.</th><th>Sales Invoice</th><th>Status</th><th>Processed By</th><th>Action</th></tr></thead><tbody id="ordersTable"></tbody></table></div>
+      </section>
+
+      <section id="expenses" class="page-section admin-only-section">
+        <div class="section-heading"><div><h3>Expenses</h3><p>Track today's business expenses.</p></div><button id="addExpenseBtn" class="primary-btn">+ Add Expense</button></div>
+        <div class="panel table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Description</th><th>Amount</th></tr></thead><tbody id="expensesTable"></tbody></table></div>
+      </section>
+
+      <section id="purchases" class="page-section admin-only-section">
+        <div class="section-heading"><div><h3>My Purchases</h3><p>Record inventory purchases.</p></div><div class="button-group purchase-action-buttons"><button id="addPurchaseBtn" class="primary-btn">+ Add Purchase</button><button id="printPurchasesCSV" class="primary-btn secondary-btn">Print CSV</button><button id="printPurchasesPDF" class="primary-btn secondary-btn">Print to PDF</button></div></div>
+        <div class="panel table-wrap"><table><thead><tr><th>ID</th><th>PO Number</th><th>Supplier Name</th><th>Address</th><th>Contact No.</th><th>Date</th><th>Product</th><th>Qty</th><th>Cost</th><th>Status</th></tr></thead><tbody id="purchasesTable"></tbody></table></div>
+      </section>
+
+      <section id="users" class="page-section admin-only-section">
+        <div class="section-heading"><div><h3>User Management</h3><p>Magdagdag, mag-edit, o mag-delete ng login account at magtakda ng role.</p></div><button id="addUserBtn" class="primary-btn">+ Add User</button></div>
+        <div class="panel table-wrap"><table><thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th>Actions</th></tr></thead><tbody id="usersTable"></tbody></table></div>
+        <p class="muted user-security-note">Security note: Ang app na ito ay browser-based at nag-iimbak ng account data sa localStorage ng computer na ito. Para sa multi-user o mas secure na paggamit, kailangan ng server-side authentication.</p>
+      </section>
+
+      <section id="reports" class="page-section">
+        <div class="section-heading"><div><h3>Reports</h3><p>Business summary and sales records.</p></div><div class="button-group report-actions"><select id="reportMonth"><option>January</option><option>February</option><option>March</option><option>April</option><option>May</option><option>June</option><option>July</option><option>August</option><option selected>September</option><option>October</option><option>November</option><option>December</option><option>Whole Year</option></select><button id="printSalesCSV" class="primary-btn">Print CSV</button><button id="printSalesPDF" class="primary-btn">Print to PDF</button></div></div>
+        <div class="stats-grid report-stats"><article class="stat-card"><div><small>BILANG NG TRANSACTION</small><h3 id="reportTransactions">0</h3></div></article><article class="stat-card"><div><small>KABUUANG KITA</small><h3 id="reportRevenue">₱0.00</h3></div></article><article class="stat-card"><div><small>KABUUANG TUBO / INTEREST</small><h3 id="reportProfit">₱0.00</h3></div></article></div>
+        <div class="panel table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Sales Invoice</th><th>Customer</th><th>Payment</th><th>Dealer Price</th><th>Retail Price</th><th>Tubo/Interest</th><th>Total</th></tr></thead><tbody id="salesTable"></tbody></table></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="appModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-modal-close></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head"><div><h3 id="modalTitle">Details</h3><p id="modalSubtitle" class="muted"></p></div><button id="modalClose" class="icon-btn" type="button" aria-label="Close">×</button></div>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  </div>
+  <script src="js/app.js?v=20261016"></script>
+</body>
+</html>
