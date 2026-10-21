@@ -13,7 +13,7 @@ const state={
   sales:[],orders:[],expenses:[],purchases:[],payments:[],panukli:0
 };
 
-const defaultAccounts={admin:{password:"admin123",role:"ADMIN",name:"Administrator"},cashier:{password:"cashier123",role:"CASHIER",name:"Cashier"}};
+const defaultAccounts={admin:{password:"Avatar123",role:"ADMIN",name:"Administrator"},cashier:{password:"cashier123",role:"CASHIER",name:"Cashier"}};
 function loadAccounts(){
   try{const saved=JSON.parse(localStorage.getItem("jgg_accounts")||"null");if(saved&&typeof saved==="object"&&Object.keys(saved).length)return saved;}catch(_){ }
   localStorage.setItem("jgg_accounts",JSON.stringify(defaultAccounts));return {...defaultAccounts};
@@ -27,7 +27,309 @@ const peso=n=>"₱"+Number(n||0).toLocaleString("en-PH",{minimumFractionDigits:2
 const todayISO=()=>new Date().toISOString().slice(0,10);
 const dateLabel=()=>new Date().toLocaleDateString("en-PH",{month:"2-digit",day:"2-digit",year:"numeric"});
 const dateTimeLabel=()=>new Date().toLocaleString("en-PH",{month:"2-digit",day:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:true});
+// ==========================================
+// FIREBASE CLOUD SYNC FUNCTIONS
+// ==========================================
+async function saveToCloud(collectionName, dataId, data) {
+  if (!window.db) return;
+  const { doc, setDoc } = window.firebaseModules;
+  try {
+    await setDoc(doc(window.db, collectionName, String(dataId)), data);
+  } catch (e) {
+    console.error("Error saving to cloud:", e);
+  }
+}
+
+async function addDataToCloud(collectionName, data) {
+  if (!window.db) return;
+  const { collection, addDoc } = window.firebaseModules;
+  try {
+    const docRef = await addDoc(collection(window.db, collectionName), data);
+    return docRef.id;
+  } catch (e) {
+    console.error("Error adding to cloud:", e);
+  }
+}
+
+async function deleteFromCloud(collectionName, dataId) {
+  if (!window.db) return;
+  const { doc, deleteDoc } = window.firebaseModules;
+  try {
+    await deleteDoc(doc(window.db, collectionName, String(dataId)));
+  } catch (e) {
+    console.error("Error deleting from cloud:", e);
+  }
+}
+
+// Real-time listener para mag-sync ang lahat ng data mula sa Firebase
+function initCloudSync() {
+  if (!window.db) {
+    // Kung sakaling offline o naglo-load pa ang window.db, hintayin nang kaunti
+    setTimeout(initCloudSync, 500);
+    return;
+  }
+  const { collection, onSnapshot } = window.firebaseModules;
+
+  // 1. Products Sync
+  onSnapshot(collection(window.db, "products"), (snapshot) => {
+    state.products = [];
+    snapshot.forEach((docSnap) => {
+      state.products.push({ firebaseId: docSnap.id, ...docSnap.data() });
+    });
+    if(state.products.length === 0) {
+      // Default initial products kung wala pa sa cloud
+      const defaultProds = [
+        {id:1,name:"Dinurado",kilo:"25KG",dealer:450,retail:500,stock:18,min:10},
+        {id:2,name:"Dinurado",kilo:"10KG",dealer:190,retail:215,stock:25,min:10},
+        {id:3,name:"Dinurado",kilo:"5KG",dealer:100,retail:115,stock:7,min:10},
+        {id:4,name:"Premium Rice",kilo:"25KG",dealer:500,retail:550,stock:8,min:10}
+      ];
+      defaultProds.forEach(p => saveToCloud("products", p.id, p));
+    }
+    renderAll();
+  });
+
+  // 2. Customers Sync
+  onSnapshot(collection(window.db, "customers"), (snapshot) => {
+    state.customers = [];
+    snapshot.forEach((docSnap) => {
+      state.customers.push({ firebaseId: docSnap.id, ...docSnap.data() });
+    });
+    renderCustomers();
+  });
+
+  // 3. Sales Sync
+  onSnapshot(collection(window.db, "sales"), (snapshot) => {
+    state.sales = [];
+    snapshot.forEach((docSnap) => {
+      state.sales.push({ firebaseId: docSnap.id, ...docSnap.data() });
+    });
+    renderSales();
+    renderDashboard();
+  });
+
+  // 4. Orders Sync
+  onSnapshot(collection(window.db, "orders"), (snapshot) => {
+    state.orders = [];
+    snapshot.forEach((docSnap) => {
+      state.orders.push({ firebaseId: docSnap.id, ...docSnap.data() });
+    });
+    renderOrders();
+  });
+
+  // 5. Expenses Sync
+  onSnapshot(collection(window.db, "expenses"), (snapshot) => {
+    state.expenses = [];
+    snapshot.forEach((docSnap) => {
+      state.expenses.push({ firebaseId: docSnap.id, ...docSnap.data() });
+    });
+    renderExpenses();
+    renderDashboard();
+  });
+
+  // 6. Purchases Sync
+  onSnapshot(collection(window.db, "purchases"), (snapshot) => {
+    state.purchases = [];
+    snapshot.forEach((docSnap) => {
+      state.purchases.push({ firebaseId: docSnap.id, ...docSnap.data() });
+    });
+    renderPurchases();
+  });
+}
+
+// Local save fallback para sa user session
 const save=()=>localStorage.setItem("jgg_state",JSON.stringify(state));
+
+const normalizeState=()=>{
+  state.panukli=Number(state.panukli||0);
+  if(!Array.isArray(state.products)) state.products=[];
+  if(!Array.isArray(state.customers)) state.customers=[];
+  if(!Array.isArray(state.sales)) state.sales=[];
+  if(!Array.isArray(state.orders)) state.orders=[];
+  if(!Array.isArray(state.expenses)) state.expenses=[];
+  if(!Array.isArray(state.purchases)) state.purchases=[];
+  if(!Array.isArray(state.cart)) state.cart=[];
+};
+
+const load=()=>{
+  normalizeState();
+  initCloudSync(); // Simulan ang pag-load at pag-sync mula sa Firebase
+};
+load();
+
+const loginScreen=document.getElementById("loginScreen"),app=document.getElementById("app");
+document.getElementById("loginForm").addEventListener("submit",e=>{
+  e.preventDefault();const u=document.getElementById("username").value.trim().toLowerCase(),p=document.getElementById("password").value;
+  if(accounts[u]&&accounts[u].password===p){state.user={username:u,...accounts[u]};localStorage.setItem("jgg_user",JSON.stringify(state.user));document.getElementById("loginError").textContent="";startApp()}
+  else {document.getElementById("loginError").textContent="Invalid username or password. Please check your login details.";}
+});
+
+function startApp(){
+  document.querySelectorAll(".page-section").forEach(x=>{x.classList.remove("active");x.setAttribute("aria-hidden","true")});
+  let saved=null;try{saved=JSON.parse(localStorage.getItem("jgg_user")||"null")}catch(_){localStorage.removeItem("jgg_user")}
+  if(saved&&accounts[String(saved.username||"").toLowerCase()]&&saved.role===accounts[String(saved.username||"").toLowerCase()].role) state.user={username:String(saved.username).toLowerCase(),...accounts[String(saved.username).toLowerCase()]};
+  else if(!state.user||!accounts[String(state.user.username||"").toLowerCase()]){state.user=null;localStorage.removeItem("jgg_user")}
+  if(!state.user)return;
+  loginScreen.classList.add("hidden");app.classList.remove("hidden");
+  document.getElementById("currentUser").textContent=state.user.name;document.getElementById("currentRole").textContent=state.user.role;document.getElementById("avatar").textContent=state.user.name.charAt(0).toUpperCase();
+  app.classList.toggle("cashier",state.user.role==="CASHIER");document.getElementById("todayDate").textContent=dateLabel();applyAccess();renderAll();navigate("dashboard");
+}
+
+function applyAccess(){
+  document.querySelectorAll(".admin-only-section").forEach(x=>x.classList.toggle("visible",state.user.role==="ADMIN"));
+  document.querySelectorAll(".admin-only").forEach(x=>x.style.display=state.user.role==="ADMIN"?"flex":"none");
+}
+
+function navigate(section){
+  const target=document.getElementById(section);if(!target)return;
+  if(target.classList.contains("admin-only-section")&&state.user.role!=="ADMIN"){alert("ADMIN access only.");return}
+  document.querySelectorAll(".page-section").forEach(x=>{x.classList.remove("active");x.setAttribute("aria-hidden","true")});target.classList.add("active");target.setAttribute("aria-hidden","false");
+  document.querySelectorAll(".nav-item").forEach(x=>{const selected=x.dataset.section===section;x.classList.toggle("active",selected);x.setAttribute("aria-current",selected?"page":"false")});
+  const title=target.querySelector("h3")?.textContent||"Dashboard";document.getElementById("pageTitle").textContent=title;document.getElementById("pageSubtitle").textContent=section==="dashboard"?"Business overview for today":"Manage "+title.toLowerCase()+".";document.getElementById("sidebar").classList.remove("open");
+}
+
+document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.section)));
+document.querySelectorAll("[data-section-jump]").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.sectionJump)));
+document.getElementById("menuBtn").addEventListener("click",()=>document.getElementById("sidebar").classList.toggle("open"));
+document.getElementById("logoutBtn").addEventListener("click",()=>{localStorage.removeItem("jgg_user");location.reload()});
+
+function renderDashboard(){
+  const today=state.sales.filter(s=>s.date===todayISO()),expenses=state.expenses.filter(e=>e.date===todayISO());
+  const sales=today.reduce((a,s)=>a+s.total,0),profit=today.reduce((a,s)=>a+s.profit,0),exp=expenses.reduce((a,e)=>a+e.amount,0);
+  document.getElementById("salesValue").textContent=peso(sales);document.getElementById("profitValue").textContent=peso(profit);document.getElementById("expensesValue").textContent=peso(exp);
+  const low=state.products.filter(p=>p.stock<=p.min);document.getElementById("lowStockValue").textContent=low.length;
+  const by=s=>state.products.filter(p=>p.kilo===s).reduce((a,p)=>a+p.stock,0);document.getElementById("stock25").textContent=by("25KG");document.getElementById("stock10").textContent=by("10KG");document.getElementById("stock5").textContent=by("5KG");
+  document.getElementById("lowStockList").innerHTML=low.length?low.map(p=>`<div class="low-item"><strong>${p.name} (${p.kilo})</strong><span>${p.stock} pcs.</span></div>`).join(""):`<div class="low-item"><strong>No low stock items</strong><span>Good</span></div>`;
+  document.getElementById("panukliDashboard").textContent=peso(state.panukli);
+}
+
+function renderProducts(){
+  const tbody=document.getElementById("productsTable");
+  if(!tbody) return;
+  tbody.innerHTML=sortedProducts().map(p=>`<tr class="product-row${Number(selectedProductId)===Number(p.id)?" selected-row":""}" data-product-id="${p.id}" tabindex="0"><td>${p.id}</td><td>${p.supplierName||"—"}</td><td>${p.supplierAddress||"—"}</td><td>${p.supplierContact||"—"}</td><td>${p.name}</td><td>${p.kilo}</td><td>${peso(p.dealer)}</td><td>${peso(p.retail)}</td><td>${Number(p.stock)||0} pcs.</td></tr>`).join("") || `<tr><td colspan="9" class="empty-cell">No products available.</td></tr>`;
+  tbody.querySelectorAll(".product-row").forEach(row=>{
+    const select=()=>selectProduct(Number(row.dataset.productId));
+    row.addEventListener("click",select);
+  });
+  updateProductActionButtons();
+}
+
+function selectProduct(id){
+  selectedProductId=id;
+  renderProducts();
+}
+
+function updateProductActionButtons(){
+  const p=state.products.find(x=>Number(x.id)===Number(selectedProductId));
+  const editBtn=document.getElementById("editProductBtn"),deleteBtn=document.getElementById("deleteProductBtn");
+  if(editBtn)editBtn.disabled=!p;
+  if(deleteBtn)deleteBtn.disabled=!p;
+}
+
+function renderExpenses(){
+  const tbody=document.getElementById("expensesTable");
+  if(!tbody) return;
+  const period=document.getElementById("expenseMonth")?.value||"Whole Year";
+  const monthIndex={January:0,February:1,March:2,April:3,May:4,June:5,July:6,August:7,September:8,October:9,November:10,December:11};
+  const currentYear=new Date().getFullYear();
+  const rows=[...(state.expenses||[])].filter(e=>{const d=new Date(String(e.date||"")+"T00:00:00");return d.getFullYear()===currentYear&&(period==="Whole Year"||d.getMonth()===monthIndex[period])}).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||""))||Number(b.id||0)-Number(b.id||0));
+  const total=rows.reduce((sum,e)=>sum+(Number(e.amount||0)),0);
+  const totalLabel=document.getElementById("expenseTotalLabel"),totalValue=document.getElementById("expenseTotalValue");
+  if(totalLabel)totalLabel.textContent=`Total Expenses — ${period}`;if(totalValue)totalValue.textContent=peso(total);
+  tbody.innerHTML=rows.map(e=>`<tr><td>${e.id}</td><td>${e.date||""}</td><td>${e.description||""}</td><td>${peso(e.amount)}</td></tr>`).join("") || `<tr><td colspan="4" class="empty-cell">No expenses recorded.</td></tr>`;
+}
+
+function renderPurchases(){
+  const tbody=document.getElementById("purchasesTable");
+  if(!tbody) return;
+  const rows=[...(state.purchases||[])].sort((a,b)=>Number(a.id||0)-Number(b.id||0));
+  tbody.innerHTML=rows.map(x=>`<tr><td>${x.id}</td><td>${x.poNumber||"—"}</td><td>${x.supplierName||"—"}</td><td>${x.supplierAddress||"—"}</td><td>${x.supplierContact||"—"}</td><td>${x.date||""}</td><td>${x.product||""}</td><td>${Number(x.qty)||0}</td><td>${peso(x.cost)}</td><td>${x.status||"Delivered"}</td></tr>`).join("") || `<tr><td colspan="10" class="empty-cell">No purchases recorded.</td></tr>`;
+}
+
+function renderSales(){
+  const tbody=document.getElementById("salesTable");
+  if(!tbody) return;
+  const month=document.getElementById("reportMonth")?.value||"Whole Year";
+  const monthIndex={January:0,February:1,March:2,April:3,May:4,June:5,July:6,August:7,September:8,October:9,November:10,December:11};
+  const rows=(state.sales||[]).filter(s=>{
+    if(month==="Whole Year")return true;
+    const d=new Date(String(s.date||"")+"T00:00:00");
+    return !Number.isNaN(d.getTime())&&d.getMonth()===monthIndex[month];
+  });
+  const isAdmin=state.user?.role==="ADMIN";
+  const revenue=rows.reduce((sum,s)=>sum+Number(s.total||0),0);
+  const profit=rows.reduce((sum,s)=>sum+Number(s.profit||0),0);
+  document.getElementById("reportTransactions").textContent=rows.length;
+  document.getElementById("reportRevenue").textContent=peso(revenue);
+  document.getElementById("reportProfit").textContent=peso(profit);
+  tbody.innerHTML=rows.map(s=>`<tr><td>${s.id}</td><td>${s.date}</td><td>${s.invoice||"—"}</td><td>${s.customer}</td><td>${s.paymentMode}</td>${isAdmin?`<td>${peso(s.dealer)}</td>`:""}<td>${peso(s.retail)}</td><td>${peso(s.profit)}</td><td>${peso(s.total)}</td></tr>`).join("") || `<tr><td colspan="${isAdmin?9:8}" class="empty-cell">No sales found.</td></tr>`;
+}
+
+function renderInventory(){
+  const tbody=document.getElementById("inventoryTable");
+  if(!tbody) return;
+  tbody.innerHTML=sortedProducts().map(p=>{const low=(Number(p.stock)||0)<=(Number(p.min)||0);return `<tr><td>${p.id}</td><td>${p.name}</td><td>${p.kilo}</td><td>${Number(p.stock)||0} pcs.</td><td>${peso((Number(p.stock)||0)*(Number(p.dealer)||0))}</td><td class="stock-status ${low?"low-stock":"sufficient-stock"}">${low?"Low Stock":"Sufficient Stock"}</td></tr>`}).join("") || `<tr><td colspan="6" class="empty-cell">No inventory available.</td></tr>`;
+}
+
+function renderCustomers(){
+  const tbody=document.getElementById("customersTable");
+  if(!tbody) return;
+  tbody.innerHTML=state.customers.map(c=>`<tr class="customer-row" data-customer-id="${c.id}"><td>${c.name}</td><td>${c.contact||"—"}</td><td>${c.address||"—"}</td><td>${c.storeName||"—"}</td><td>${peso(c.balance)}</td><td class="center">${c.kg25||0}</td><td class="center">${c.kg10||0}</td><td class="center">${c.kg5||0}</td></tr>`).join("") || `<tr><td colspan="8" class="empty-cell">No customers found.</td></tr>`;
+  const dl=document.getElementById("customerOptions");
+  if(dl) dl.innerHTML=state.customers.map(c=>`<option value="${c.name}"></option>`).join("");
+}
+
+function renderOrders(){
+  const tbody=document.getElementById("ordersTable");
+  if(!tbody) return;
+  const pending=state.orders.filter(o=>o.status==="For Delivery");
+  tbody.innerHTML=pending.map(o=>`<tr><td>${o.id}</td><td>${o.date}</td><td>${o.customer}</td><td>${o.address}</td><td>${o.contact}</td><td>${o.invoice}</td><td><span class="status-badge pending">Pending</span></td><td>${o.processedBy}</td><td><button class="primary-btn" onclick="markDelivered('${o.firebaseId}')">Mark Delivered</button></td></tr>`).join("")||`<tr><td colspan="9" class="empty-cell">No pending orders.</td></tr>`;
+}
+
+// Function para i-mark as delivered at i-update ang stock sa Cloud
+async function markDelivered(firebaseId) {
+  const order = state.orders.find(o => o.firebaseId === firebaseId);
+  if(!order) return;
+  
+  order.status = "Delivered";
+  order.delivered = true;
+  
+  // I-save ang updated order sa cloud
+  await saveToCloud("orders", firebaseId, order);
+  
+  // Magdagdag din sa sales
+  const newSale = {
+    id: Date.now(),
+    date: todayISO(),
+    dateTime: dateTimeLabel(),
+    customer: order.customer,
+    invoice: order.invoice,
+    product: order.product,
+    qty: order.qty,
+    retail: order.retail,
+    total: order.total,
+    profit: order.profit,
+    paymentMode: order.paymentMode,
+    user: state.user.name
+  };
+  await addDataToCloud("sales", newSale);
+  alert("Marked as delivered and recorded to sales!");
+}
+
+function renderAll(){
+  renderDashboard();
+  renderProducts();
+  renderInventory();
+  renderCustomers();
+  renderOrders();
+  renderExpenses();
+  renderPurchases();
+  renderSales();
+}
+
+
+
+
 const normalizeState=()=>{
   state.panukli=Number(state.panukli||0);
 
@@ -206,8 +508,14 @@ function updateProductActionButtons(){
 
 function renderExpenses(){
  const tbody=document.getElementById("expensesTable");
- const rows=[...(state.expenses||[])].sort((a,b)=>Number(a.id||0)-Number(b.id||0));
- tbody.innerHTML=rows.map(e=>`<tr><td>${e.id}</td><td>${escapeHtml(e.date||"")}</td><td>${escapeHtml(e.description||"")}</td><td>${peso(e.amount)}</td></tr>`).join("") || `<tr><td colspan="4" class="empty-cell">No expenses recorded.</td></tr>`;
+ const period=document.getElementById("expenseMonth")?.value||"Whole Year";
+ const monthIndex={January:0,February:1,March:2,April:3,May:4,June:5,July:6,August:7,September:8,October:9,November:10,December:11};
+ const currentYear=new Date().getFullYear();
+ const rows=[...(state.expenses||[])].filter(e=>{const d=new Date(String(e.date||"")+"T00:00:00");return d.getFullYear()===currentYear&&(period==="Whole Year"||d.getMonth()===monthIndex[period])}).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||""))||Number(b.id||0)-Number(a.id||0));
+ const total=rows.reduce((sum,e)=>sum+(Number(e.amount)||0),0);
+ const totalLabel=document.getElementById("expenseTotalLabel"),totalValue=document.getElementById("expenseTotalValue");
+ if(totalLabel)totalLabel.textContent=`Total Expenses — ${period}`;if(totalValue)totalValue.textContent=peso(total);
+ tbody.innerHTML=rows.map(e=>`<tr><td>${e.id}</td><td>${escapeHtml(e.date||"")}</td><td>${escapeHtml(e.description||"")}</td><td>${peso(e.amount)}</td></tr>`).join("") || `<tr><td colspan="4" class="empty-cell">No expenses recorded for ${escapeHtml(period)}.</td></tr>`;
 }
 function renderPurchases(){
  const tbody=document.getElementById("purchasesTable");
@@ -256,13 +564,16 @@ function renderSales(){
    const d=new Date(String(s.date||"")+"T00:00:00");
    return !Number.isNaN(d.getTime())&&d.getMonth()===monthIndex[month];
  });
- const groups=groupSalesRows(rows).sort((a,b)=>Number(a.id||0)-Number(b.id||0));
+ const isAdmin=state.user?.role==="ADMIN";
+ const groups=groupSalesRows(rows).sort((a,b)=>Number(b.id||0)-Number(a.id||0));
  const revenue=groups.reduce((sum,s)=>sum+Number(s.total||0),0);
  const profit=groups.reduce((sum,s)=>sum+Number(s.profit||0),0);
  document.getElementById("reportTransactions").textContent=groups.length;
  document.getElementById("reportRevenue").textContent=peso(revenue);
  document.getElementById("reportProfit").textContent=peso(profit);
- tbody.innerHTML=groups.map(g=>`<tr class="sales-row" data-sales-key="${encodeURIComponent(g.key)}" title="Double-click to view purchased items"><td>${g.id}</td><td>${escapeHtml(g.date)}</td><td>${escapeHtml(g.invoice)}</td><td>${escapeHtml(g.customer)}</td><td>${escapeHtml(g.paymentMode)}</td><td>${peso(g.dealer)}</td><td>${peso(g.retail)}</td><td>${peso(g.profit)}</td><td>${peso(g.total)}</td></tr>`).join("") || `<tr><td colspan="9" class="empty-cell">No sales found for the selected period.</td></tr>`;
+ const dealerHeader=document.querySelector("#reports thead th.report-dealer-price");
+ if(dealerHeader)dealerHeader.hidden=!isAdmin;
+ tbody.innerHTML=groups.map(g=>`<tr class="sales-row" data-sales-key="${encodeURIComponent(g.key)}" title="Double-click to view purchased items"><td>${g.id}</td><td>${escapeHtml(g.date)}</td><td>${escapeHtml(g.invoice)}</td><td>${escapeHtml(g.customer)}</td><td>${escapeHtml(g.paymentMode)}</td>${isAdmin?`<td class="report-dealer-price">${peso(g.dealer)}</td>`:""}<td>${peso(g.retail)}</td><td>${peso(g.profit)}</td><td>${peso(g.total)}</td></tr>`).join("") || `<tr><td colspan="${isAdmin?9:8}" class="empty-cell">No sales found for the selected period.</td></tr>`;
  tbody.querySelectorAll(".sales-row").forEach(row=>row.addEventListener("dblclick",()=>openSalesDetails(decodeURIComponent(row.dataset.salesKey))));
 }
 function openSalesDetails(key){
@@ -272,7 +583,7 @@ function openSalesDetails(key){
  openModal(`Sales Invoice ${first.invoice||"—"}`,`${first.customer||"Walk-in"} • ${first.dateTime||first.date||""}`,`<div class="detail-table-wrap"><table><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>${items.map(x=>`<tr><td>${escapeHtml(x.product||`${x.name||""} (${x.kilo||""})`)}</td><td>${Number(x.qty)||0}</td><td>${peso(x.retail)}</td><td>${peso(x.total)}</td></tr>`).join("")}</tbody></table></div><div class="detail-total"><span>Total</span><strong>${peso(items.reduce((a,x)=>a+(Number(x.total)||0),0))}</strong></div>`);
 }
 function renderInventory(){
- document.getElementById("inventoryTable").innerHTML=sortedProducts().map(p=>`<tr><td>${p.id}</td><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.kilo)}</td><td>${Number(p.stock)||0} pcs.</td><td>${peso((Number(p.stock)||0)*(Number(p.dealer)||0))}</td></tr>`).join("") || `<tr><td colspan="5" class="empty-cell">No inventory available.</td></tr>`;
+ document.getElementById("inventoryTable").innerHTML=sortedProducts().map(p=>{const low=(Number(p.stock)||0)<=(Number(p.min)||0);return `<tr><td>${p.id}</td><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.kilo)}</td><td>${Number(p.stock)||0} pcs.</td><td>${peso((Number(p.stock)||0)*(Number(p.dealer)||0))}</td><td class="stock-status ${low?"low-stock":"sufficient-stock"}">${low?"Low Stock":"Sufficient Stock"}</td></tr>`}).join("") || `<tr><td colspan="6" class="empty-cell">No inventory available.</td></tr>`;
 }
 function renderCustomers(){
  const tbody=document.getElementById("customersTable");
@@ -312,11 +623,15 @@ function openOrderDetails(key){
  openModal(`Order ${first.invoice||"—"}`,`${first.customer||"Walk-in"} • ${first.date||""}`,`<div class="detail-table-wrap"><table><thead><tr><th>Product</th><th>Qty</th><th>Status</th></tr></thead><tbody>${items.map(x=>`<tr><td>${escapeHtml(x.product||"")}</td><td>${Number(x.qty)||0}</td><td>${x.delivered===true?"Delivered":"Pending"}</td></tr>`).join("")}</tbody></table></div>`);
 }
 function renderDeliveryHistory(){
- const delivered=groupOrders(state.orders.filter(o=>o.delivered===true||o.status==="Delivered"));
- if(!delivered.length){openModal("Delivery History","No completed deliveries yet.",`<div class="empty-cell">No completed deliveries found.</div>`);return}
- openModal("Delivery History",`${delivered.length} completed order${delivered.length===1?"":"s"}`,`<div class="detail-table-wrap"><table><thead><tr><th>Date</th><th>Sales Invoice</th><th>Customer</th><th>Delivered Date</th><th>Delivered By</th></tr></thead><tbody>${delivered.sort((a,b)=>Number(b.id||0)-Number(a.id||0)).map(g=>`<tr class="history-row" data-history-key="${encodeURIComponent(g.key)}"><td>${escapeHtml(g.date)}</td><td>${escapeHtml(g.invoice)}</td><td>${escapeHtml(g.customer)}</td><td>${escapeHtml(g.deliveredDate||"—")}</td><td>${escapeHtml(g.deliveredBy||"—")}</td></tr>`).join("")}</tbody></table></div>`);
- document.querySelectorAll(".history-row").forEach(row=>row.addEventListener("dblclick",()=>openOrderDetails(decodeURIComponent(row.dataset.historyKey))));
+ const delivered=groupOrders(state.orders.filter(o=>o.delivered===true||o.status==="Delivered")).sort((a,b)=>Number(b.id||0)-Number(a.id||0));
+ const headers=["Date","Sales Invoice","Customer","Delivered Date","Delivered By"];
+ const rows=delivered.map(g=>[g.date||"",g.invoice||"—",g.customer||"Walk-in",g.deliveredDate||"—",g.deliveredBy||"—"]);
+ const tableRows=rows.map(r=>`<tr><td>${escapeHtml(r[0])}</td><td>${escapeHtml(r[1])}</td><td>${escapeHtml(r[2])}</td><td>${escapeHtml(r[3])}</td><td>${escapeHtml(r[4])}</td></tr>`).join("");
+ openModal("Delivery History",`${delivered.length} completed order${delivered.length===1?"":"s"}`,`<div class="delivery-history-content"><div class="button-group delivery-history-actions"><button type="button" id="deliveryHistoryCSV" class="primary-btn">Print to CSV</button><button type="button" id="deliveryHistoryPDF" class="primary-btn secondary-btn">Print to PDF</button></div><div class="detail-table-wrap delivery-history-table-wrap"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${tableRows||`<tr><td colspan="5" class="empty-cell">No completed deliveries found.</td></tr>`}</tbody></table></div></div>`);
+ document.getElementById("deliveryHistoryCSV")?.addEventListener("click",()=>{const csv=[headers,...rows].map(r=>r.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n");downloadText(`JAT-Delivery-History-${todayISO()}.csv`,csv,"text/csv;charset=utf-8")});
+ document.getElementById("deliveryHistoryPDF")?.addEventListener("click",()=>{const w=window.open("","_blank","width=1200,height=800");if(!w){alert("Please allow pop-ups to print/save the Delivery History PDF.");return}w.document.write(`<html><head><title>JAT Delivery History ${todayISO()}</title><style>body{font-family:Arial;padding:24px}h1{margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #999;padding:8px;text-align:left;font-size:12px}th{background:#eee}</style></head><body><h1>JAT Golden Grains Trading</h1><div>Delivery History — ${dateLabel()}</div><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${tableRows||`<tr><td colspan="5">No completed deliveries found.</td></tr>`}</tbody></table><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close()});
 }
+
 function markOrderDelivered(encodedKey){
  const key=decodeURIComponent(encodedKey),items=state.orders.filter(o=>orderGroupKey(o)===key&&o.delivered!==true);if(!items.length)return;
  if(!confirm(`Mark Sales Invoice ${items[0].invoice||"—"} as Delivered? This will record the completed sale in Reports.`))return;
@@ -516,6 +831,7 @@ document.getElementById("deliveryHistoryBtn").addEventListener("click",renderDel
 
 document.getElementById("addPanukliBtn").addEventListener("click",()=>{const amount=Number(prompt("Halagang idaragdag sa Panukli:","0"));if(!Number.isFinite(amount)||amount<=0)return;state.panukli+=amount;save();renderAll();alert(`Nadagdagan ang Panukli ng ${peso(amount)}.\nKabuuang Panukli: ${peso(state.panukli)}`)});
 
+document.getElementById("expenseMonth").addEventListener("change",renderExpenses);
 document.getElementById("addExpenseBtn").addEventListener("click",()=>{const description=prompt("Expense description:");if(!description)return;const amount=Number(prompt("Amount:","0"));if(amount<0)return;const id=state.expenses.length?Math.max(...state.expenses.map(e=>e.id))+1:1;state.expenses.push({id,date:todayISO(),description,amount});save();renderAll()});
 document.getElementById("addPurchaseBtn").addEventListener("click",()=>{
  if(!requireAdmin("add purchases"))return;
@@ -574,8 +890,8 @@ function printPurchasesPDF(){
  w.document.close();
 }
 document.getElementById("printPurchasesCSV").addEventListener("click",printPurchasesCSV);document.getElementById("printPurchasesPDF").addEventListener("click",printPurchasesPDF);
-function saveInventoryCSV(){if(!requireAdmin("save Inventory"))return;const rows=[["Product","KILO","Available","Inventory Cost"],...state.products.map(p=>[p.name,p.kilo,p.stock,p.stock*p.dealer])];const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");downloadText(`JAT-Inventory-${todayISO()}.csv`,csv,"text/csv;charset=utf-8");setTimeout(()=>alert("Inventory CSV saved successfully."),100)}
-function saveInventoryPDF(){if(!requireAdmin("save Inventory as PDF"))return;const rows=state.products.map(p=>`<tr><td>${escapeHtml(p.name)}</td><td>${p.kilo}</td><td>${p.stock} pcs.</td><td>${peso(p.stock*p.dealer)}</td></tr>`).join("");const w=window.open("","_blank","width=1000,height=700");if(!w){alert("Please allow pop-ups to print/save the Inventory PDF.");return}w.document.write(`<html><head><title>JAT Inventory ${todayISO()}</title><style>body{font-family:Arial;padding:30px}h1{margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #999;padding:8px;text-align:left}th{background:#eee}@media print{body{padding:10px}}</style></head><body><h1>JAT Golden Grains Trading</h1><div>Inventory Report — ${dateLabel()}</div><table><thead><tr><th>Product</th><th>KILO</th><th>Available</th><th>Inventory Cost</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close()}
+function saveInventoryCSV(){if(!requireAdmin("save Inventory"))return;const rows=[["Product","KILO","Available","Inventory Cost","Stock Status"],...state.products.map(p=>[p.name,p.kilo,p.stock,p.stock*p.dealer,(Number(p.stock)||0)<=(Number(p.min)||0)?"Low Stock":"Sufficient Stock"])];const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");downloadText(`JAT-Inventory-${todayISO()}.csv`,csv,"text/csv;charset=utf-8");setTimeout(()=>alert("Inventory CSV saved successfully."),100)}
+function saveInventoryPDF(){if(!requireAdmin("save Inventory as PDF"))return;const rows=state.products.map(p=>{const low=(Number(p.stock)||0)<=(Number(p.min)||0);return `<tr><td>${escapeHtml(p.name)}</td><td>${p.kilo}</td><td>${p.stock} pcs.</td><td>${peso(p.stock*p.dealer)}</td><td style="color:${low?"#c62828":"#16803c"};font-weight:700">${low?"Low Stock":"Sufficient Stock"}</td></tr>`}).join("");const w=window.open("","_blank","width=1000,height=700");if(!w){alert("Please allow pop-ups to print/save the Inventory PDF.");return}w.document.write(`<html><head><title>JAT Inventory ${todayISO()}</title><style>body{font-family:Arial;padding:30px}h1{margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #999;padding:8px;text-align:left}th{background:#eee}@media print{body{padding:10px}}</style></head><body><h1>JAT Golden Grains Trading</h1><div>Inventory Report — ${dateLabel()}</div><table><thead><tr><th>Product</th><th>KILO</th><th>Available</th><th>Inventory Cost</th><th>Stock Status</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close()}
 document.getElementById("saveInventoryCSV").addEventListener("click",saveInventoryCSV);document.getElementById("saveInventoryPDF").addEventListener("click",saveInventoryPDF);
 function openModal(title,subtitle,body){
  const modal=document.getElementById("appModal");document.getElementById("modalTitle").textContent=title;document.getElementById("modalSubtitle").textContent=subtitle||"";document.getElementById("modalBody").innerHTML=body;modal.classList.remove("hidden");modal.setAttribute("aria-hidden","false");
@@ -589,12 +905,17 @@ function currentReportGroups(){
  return groupSalesRows(state.sales.filter(s=>month==="Whole Year"||new Date(String(s.date||"")+"T00:00:00").getMonth()===idx[month]));
 }
 function printSalesCSV(){
- const rows=[["ID","Date","Sales Invoice","Customer","Payment","Dealer Price","Retail Price","Tubo/Interest","Total"],...currentReportGroups().map(g=>[g.id,g.date,g.invoice,g.customer,g.paymentMode,g.dealer,g.retail,g.profit,g.total])];
+ const isAdmin=state.user?.role==="ADMIN";
+ const headers=["ID","Date","Sales Invoice","Customer","Payment",...(isAdmin?["Dealer Price"]:[]),"Retail Price","Tubo/Interest","Total"];
+ const rows=[headers,...currentReportGroups().sort((a,b)=>Number(b.id||0)-Number(a.id||0)).map(g=>[g.id,g.date,g.invoice,g.customer,g.paymentMode,...(isAdmin?[g.dealer]:[]),g.retail,g.profit,g.total])];
  const csv=rows.map(r=>r.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n");downloadText(`JAT-Sales-Report-${todayISO()}.csv`,csv,"text/csv;charset=utf-8");
 }
 function printSalesPDF(){
- const groups=currentReportGroups(),rows=groups.map(g=>`<tr><td>${g.id}</td><td>${escapeHtml(g.date)}</td><td>${escapeHtml(g.invoice)}</td><td>${escapeHtml(g.customer)}</td><td>${escapeHtml(g.paymentMode)}</td><td>${peso(g.dealer)}</td><td>${peso(g.retail)}</td><td>${peso(g.profit)}</td><td>${peso(g.total)}</td></tr>`).join("");
- const w=window.open("","_blank","width=1200,height=800");if(!w){alert("Please allow pop-ups to print/save the Reports PDF.");return}w.document.write(`<html><head><title>JAT Sales Report ${todayISO()}</title><style>body{font-family:Arial;padding:25px}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #999;padding:7px;text-align:left;font-size:11px}th{background:#eee}h1{margin-bottom:4px}</style></head><body><h1>JAT Golden Grains Trading</h1><div>Sales Report — ${dateLabel()}</div><table><thead><tr><th>ID</th><th>Date</th><th>Sales Invoice</th><th>Customer</th><th>Payment</th><th>Dealer Price</th><th>Retail Price</th><th>Tubo/Interest</th><th>Total</th></tr></thead><tbody>${rows||`<tr><td colspan="9">No sales found.</td></tr>`}</tbody></table><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();
+ const isAdmin=state.user?.role==="ADMIN";
+ const groups=currentReportGroups().sort((a,b)=>Number(b.id||0)-Number(a.id||0));
+ const headers=["ID","Date","Sales Invoice","Customer","Payment",...(isAdmin?["Dealer Price"]:[]),"Retail Price","Tubo/Interest","Total"];
+ const rows=groups.map(g=>`<tr><td>${g.id}</td><td>${escapeHtml(g.date)}</td><td>${escapeHtml(g.invoice)}</td><td>${escapeHtml(g.customer)}</td><td>${escapeHtml(g.paymentMode)}</td>${isAdmin?`<td>${peso(g.dealer)}</td>`:""}<td>${peso(g.retail)}</td><td>${peso(g.profit)}</td><td>${peso(g.total)}</td></tr>`).join("");
+ const w=window.open("","_blank","width=1200,height=800");if(!w){alert("Please allow pop-ups to print/save the Reports PDF.");return}w.document.write(`<html><head><title>JAT Sales Report ${todayISO()}</title><style>body{font-family:Arial;padding:25px}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #999;padding:7px;text-align:left;font-size:11px}th{background:#eee}h1{margin-bottom:4px}</style></head><body><h1>JAT Golden Grains Trading</h1><div>Sales Report — ${dateLabel()}</div><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows||`<tr><td colspan="${headers.length}">No sales found.</td></tr>`}</tbody></table><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();
 }
 document.getElementById("printSalesCSV").addEventListener("click",printSalesCSV);document.getElementById("printSalesPDF").addEventListener("click",printSalesPDF);
 

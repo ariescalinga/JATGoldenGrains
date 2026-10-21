@@ -163,7 +163,7 @@
 
       <section id="inventory" class="page-section">
         <div class="section-heading"><div><h3>Inventory</h3><p>Current available stocks.</p></div><div class="button-group"><button id="saveInventoryCSV" class="primary-btn">SAVE to CSV</button><button id="saveInventoryPDF" class="primary-btn">SAVE to PDF</button></div></div>
-        <div class="panel table-wrap"><table><thead><tr><th>ID</th><th>Product</th><th>KILO</th><th>Available</th><th>Inventory Cost</th></tr></thead><tbody id="inventoryTable"></tbody></table></div>
+        <div class="panel table-wrap"><table><thead><tr><th>ID</th><th>Product</th><th>KILO</th><th>Available</th><th>Inventory Cost</th><th>Stock Status</th></tr></thead><tbody id="inventoryTable"></tbody></table></div>
       </section>
 
       <section id="customers" class="page-section">
@@ -177,8 +177,9 @@
       </section>
 
       <section id="expenses" class="page-section admin-only-section">
-        <div class="section-heading"><div><h3>Expenses</h3><p>Track today's business expenses.</p></div><button id="addExpenseBtn" class="primary-btn">+ Add Expense</button></div>
-        <div class="panel table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Description</th><th>Amount</th></tr></thead><tbody id="expensesTable"></tbody></table></div>
+        <div class="section-heading"><div><h3>Expenses</h3><p>Track and review expenses by month or for the whole year.</p></div><div class="button-group expense-actions"><label for="expenseMonth">Period</label><select id="expenseMonth"><option value="Whole Year" selected>Whole Year</option><option>January</option><option>February</option><option>March</option><option>April</option><option>May</option><option>June</option><option>July</option><option>August</option><option>September</option><option>October</option><option>November</option><option>December</option></select><button id="addExpenseBtn" class="primary-btn">+ Add Expense</button></div></div>
+        <div class="panel expense-total-panel"><span id="expenseTotalLabel">Total Expenses — Whole Year</span><strong id="expenseTotalValue">₱0.00</strong></div>
+        <div class="panel table-wrap expenses-table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Description</th><th>Amount</th></tr></thead><tbody id="expensesTable"></tbody></table></div>
       </section>
 
       <section id="purchases" class="page-section admin-only-section">
@@ -195,7 +196,7 @@
       <section id="reports" class="page-section">
         <div class="section-heading"><div><h3>Reports</h3><p>Business summary and sales records.</p></div><div class="button-group report-actions"><select id="reportMonth"><option>January</option><option>February</option><option>March</option><option>April</option><option>May</option><option>June</option><option>July</option><option>August</option><option selected>September</option><option>October</option><option>November</option><option>December</option><option>Whole Year</option></select><button id="printSalesCSV" class="primary-btn">Print CSV</button><button id="printSalesPDF" class="primary-btn">Print to PDF</button></div></div>
         <div class="stats-grid report-stats"><article class="stat-card"><div><small>BILANG NG TRANSACTION</small><h3 id="reportTransactions">0</h3></div></article><article class="stat-card"><div><small>KABUUANG KITA</small><h3 id="reportRevenue">₱0.00</h3></div></article><article class="stat-card"><div><small>KABUUANG TUBO / INTEREST</small><h3 id="reportProfit">₱0.00</h3></div></article></div>
-        <div class="panel table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Sales Invoice</th><th>Customer</th><th>Payment</th><th>Dealer Price</th><th>Retail Price</th><th>Tubo/Interest</th><th>Total</th></tr></thead><tbody id="salesTable"></tbody></table></div>
+        <div class="panel table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Sales Invoice</th><th>Customer</th><th>Payment</th><th class="report-dealer-price">Dealer Price</th><th>Retail Price</th><th>Tubo/Interest</th><th>Total</th></tr></thead><tbody id="salesTable"></tbody></table></div>
       </section>
     </main>
   </div>
@@ -208,5 +209,30 @@
     </div>
   </div>
   <script src="js/app.js?v=20261016"></script>
+<!-- I-load ang Firebase SDK at i-initialize ang database -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, addDoc, setDoc, doc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // ILAGAY DITO ANG IYONG TUNAY NA FIREBASE CONFIG MULA SA FIREBASE CONSOLE
+    const firebaseConfig = {
+      apiKey: "AIzaSyBluaKKFE9CIyoF78eFNNZQNzlgyBbgmsQ",
+      authDomain: "jatgoldengrains.firebaseapp.com",
+      projectId: "jatgoldengrains",
+      storageBucket: "jatgoldengrains.firebasestorage.app",
+      messagingSenderId: "123456789",
+      appId: "1:670530546100:web:ab9fc767e8f84c09e02ae1"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // I-expose sa global window para magamit ng js/app.js
+    window.db = db;
+    window.firebaseModules = { collection, getDocs, addDoc, setDoc, doc, deleteDoc, onSnapshot };
+  </script>
+
+  <script src="js/app.js?v=20261016"></script>
 </body>
 </html>
+

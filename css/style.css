@@ -323,3 +323,44 @@
 .login-brand-text .muted{font-size:12px;line-height:1.4;margin:7px 0 0}
 .login-card form{margin-top:22px}
 @media(max-width:420px){.login-brand{gap:9px}.login-logo-wrap{width:78px;height:78px;flex-basis:78px}.login-card .login-brand h1{font-size:19px}}
+
+
+/* Reports and Customer's List: contained scrolling keeps the page layout visible. */
+#reports .table-wrap,
+#customers .table-wrap{max-height:calc(100vh - 300px);min-height:180px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;}
+#reports .table-wrap thead th,
+#customers .table-wrap thead th{position:sticky;top:0;z-index:3;}
+#reports .table-wrap table{min-width:900px;}
+#customers .table-wrap table{min-width:980px;}
+/* Internal record IDs remain in the data model and row actions, but are hidden from the UI. */
+#products .table-wrap th:first-child,#products .table-wrap td:first-child,
+#inventory .table-wrap th:first-child,#inventory .table-wrap td:first-child,
+#orders .table-wrap th:first-child,#orders .table-wrap td:first-child,
+#expenses .table-wrap th:first-child,#expenses .table-wrap td:first-child,
+#purchases .table-wrap th:first-child,#purchases .table-wrap td:first-child,
+#reports .table-wrap th:first-child,#reports .table-wrap td:first-child{display:none;}
+@media(max-width:900px){#reports .table-wrap,#customers .table-wrap{max-height:55vh;}}
+
+/* Delivery History: wider modal, independently scrollable table, equal export buttons */
+.modal-card:has(.delivery-history-content){width:min(1180px,97vw);max-height:94vh;display:flex;flex-direction:column;}
+.modal-card:has(.delivery-history-content) .modal-body{min-height:0;display:flex;flex-direction:column;}
+.delivery-history-content{display:flex;flex-direction:column;gap:14px;min-height:0;}
+.delivery-history-actions{display:flex;gap:10px;}
+.delivery-history-actions button{flex:1 1 0;min-width:0;min-height:42px;}
+.delivery-history-table-wrap{max-height:min(62vh,620px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;}
+.delivery-history-table-wrap table{min-width:760px;width:100%;}
+.delivery-history-table-wrap thead th{position:sticky;top:0;z-index:2;}
+.expense-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.expense-actions label{font-size:13px;font-weight:700;color:#526268;}
+.expense-actions select{min-width:145px;padding:10px 12px;border:1px solid #dce5e2;border-radius:9px;background:#fff;color:#263b34;}
+.expense-total-panel{display:flex;justify-content:space-between;align-items:center;gap:15px;padding:17px 20px;background:#f5f9f7;}
+.expense-total-panel span{font-size:14px;font-weight:750;color:#526268;}
+.expense-total-panel strong{font-size:24px;color:#176b4d;}
+#expenses .expenses-table-wrap{max-height:calc(100vh - 360px);min-height:180px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;}
+#expenses .expenses-table-wrap thead th{position:sticky;top:0;z-index:2;}
+@media(max-width:700px){.expense-actions{width:100%;}.expense-actions select{flex:1;min-width:120px}.expense-total-panel{align-items:flex-start;flex-direction:column}.delivery-history-actions{flex-direction:row}.modal-card:has(.delivery-history-content){width:98vw;padding:12px}}
+
+/* Inventory stock status colors */
+.stock-status{font-weight:800!important}.stock-status.low-stock{color:#c62828!important}.stock-status.sufficient-stock{color:#16803c!important}
+#inventory .table-wrap{max-height:calc(100vh - 205px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+#inventory .table-wrap thead th{position:sticky;top:0;z-index:2}
