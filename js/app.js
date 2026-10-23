@@ -4,7 +4,7 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "
 
 // JAT Golden Grains Trading — Firebase shared database configuration.
 const firebaseConfig = {
-  apiKey: "AIzaSyBluaKKFE9CIyoF78eFNNZQNzlgyBbgmsQ",
+  apiKey: "AIzaSyBluaKKFE9CIyoF78eFNNZQNzlgyBbgms",
   authDomain: "jatgoldengrains.firebaseapp.com",
   projectId: "jatgoldengrains",
   storageBucket: "jatgoldengrains.firebasestorage.app",
@@ -275,6 +275,49 @@ document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=
 document.querySelectorAll("[data-section-jump]").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.sectionJump)));
 document.getElementById("menuBtn").addEventListener("click",()=>document.getElementById("sidebar").classList.toggle("open"));
 document.getElementById("logoutBtn").addEventListener("click",async()=>{cloudReady=false;try{await signOut(auth)}catch(e){console.error(e)}});
+
+// Admin-only export of the current shared Firestore document. This is read-only:
+// it never modifies or deletes Firestore or localStorage data.
+const backupDataButton=document.getElementById("backupDataBtn");
+if(backupDataButton){
+ backupDataButton.addEventListener("click",async()=>{
+   if(state.user?.role!=="ADMIN" || String(auth.currentUser?.email||"").toLowerCase()!==ADMIN_EMAIL){
+     alert("ADMIN access only. Hindi ka awtorisadong gumawa ng backup.");return;
+   }
+   if(!cloudReady){alert("Hindi pa handa ang koneksyon sa Firestore. Maghintay sandali at subukan muli.");return;}
+   const originalText=backupDataButton.textContent;
+   backupDataButton.disabled=true;backupDataButton.textContent="Preparing backup...";
+   try{
+     const snapshot=await getDoc(businessDataRef);
+     if(!snapshot.exists()){
+       alert("Walang shared business data document sa Firestore. Walang na-download na backup.");return;
+     }
+     const backup={
+       backupFormat:"JAT Golden Grains Trading Firestore Backup",
+       backupVersion:1,
+       exportedAt:new Date().toISOString(),
+       firebaseProject:firebaseConfig.projectId,
+       firestorePath:"businessData/main",
+       data:snapshot.data()
+     };
+     const json=JSON.stringify(backup,null,2);
+     const blob=new Blob([json],{type:"application/json;charset=utf-8"});
+     const url=URL.createObjectURL(blob);
+     const link=document.createElement("a");
+     const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+     link.href=url;link.download=`JAT-Golden-Grains-Backup-${stamp}.json`;
+     document.body.appendChild(link);link.click();link.remove();
+     setTimeout(()=>URL.revokeObjectURL(url),1000);
+     alert("Matagumpay na na-download ang backup ng shared Firestore data. Itago ang JSON file sa ligtas na lugar. Hindi binago o binura ang database.");
+   }catch(err){
+     console.error("Backup export failed:",err);
+     alert("Hindi nagawa ang backup. Suriin ang internet connection at Firestore Rules, pagkatapos ay subukan muli.");
+   }finally{
+     backupDataButton.disabled=false;backupDataButton.textContent=originalText;
+   }
+ });
+}
+
 
 function renderDashboard(){
  const today=state.sales.filter(s=>s.date===todayISO()),expenses=state.expenses.filter(e=>e.date===todayISO());
