@@ -1,3 +1,28 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+
+// JAT Golden Grains Trading — Firebase shared database configuration.
+const firebaseConfig = {
+  apiKey: "AIzaSyBluaKKFE9CIyoF78eFNNZQNzlgyBbgms",
+  authDomain: "jatgoldengrains.firebaseapp.com",
+  projectId: "jatgoldengrains",
+  storageBucket: "jatgoldengrains.firebasestorage.app",
+  messagingSenderId: "670530546100",
+  appId: "1:670530546100:web:ab9fc767e8f84c09e02ae1",
+  measurementId: "G-VGY6BGFC02"
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+const businessDataRef = doc(db, "businessData", "main");
+const ADMIN_EMAIL = "aries.calinga@gmail.com";
+let cloudReady = false;
+let cloudUnsubscribe = null;
+let applyingCloudData = false;
+let lastCloudJson = "";
+let saveQueue = Promise.resolve();
+
 const state={
   user:null,
   cart:[],
@@ -13,13 +38,9 @@ const state={
   sales:[],orders:[],expenses:[],purchases:[],payments:[],panukli:0
 };
 
-const defaultAccounts={admin:{password:"Avatar123",role:"ADMIN",name:"Administrator"},cashier:{password:"cashier123",role:"CASHIER",name:"Cashier"}};
-function loadAccounts(){
-  try{const saved=JSON.parse(localStorage.getItem("jgg_accounts")||"null");if(saved&&typeof saved==="object"&&Object.keys(saved).length)return saved;}catch(_){ }
-  localStorage.setItem("jgg_accounts",JSON.stringify(defaultAccounts));return {...defaultAccounts};
-}
-let accounts=loadAccounts();
-function saveAccounts(){localStorage.setItem("jgg_accounts",JSON.stringify(accounts));}
+// User credentials are managed by Firebase Authentication, not localStorage.
+let accounts={"aries.calinga@gmail.com":{role:"ADMIN",name:"Administrator"}};
+function saveAccounts(){ /* Firebase Auth accounts must be managed in Firebase Console. */ }
 let selectedProductId=null;
 const kiloRank=k=>({"25KG":25,"10KG":10,"5KG":5,"4KG":4,"3KG":3,"2KG":2,"1KG":1}[String(k||"").toUpperCase()]||0);
 const sortedProducts=()=>[...state.products].sort((a,b)=>kiloRank(b.kilo)-kiloRank(a.kilo)||a.name.localeCompare(b.name));
@@ -27,309 +48,36 @@ const peso=n=>"₱"+Number(n||0).toLocaleString("en-PH",{minimumFractionDigits:2
 const todayISO=()=>new Date().toISOString().slice(0,10);
 const dateLabel=()=>new Date().toLocaleDateString("en-PH",{month:"2-digit",day:"2-digit",year:"numeric"});
 const dateTimeLabel=()=>new Date().toLocaleString("en-PH",{month:"2-digit",day:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:true});
-// ==========================================
-// FIREBASE CLOUD SYNC FUNCTIONS
-// ==========================================
-async function saveToCloud(collectionName, dataId, data) {
-  if (!window.db) return;
-  const { doc, setDoc } = window.firebaseModules;
-  try {
-    await setDoc(doc(window.db, collectionName, String(dataId)), data);
-  } catch (e) {
-    console.error("Error saving to cloud:", e);
-  }
-}
-
-async function addDataToCloud(collectionName, data) {
-  if (!window.db) return;
-  const { collection, addDoc } = window.firebaseModules;
-  try {
-    const docRef = await addDoc(collection(window.db, collectionName), data);
-    return docRef.id;
-  } catch (e) {
-    console.error("Error adding to cloud:", e);
-  }
-}
-
-async function deleteFromCloud(collectionName, dataId) {
-  if (!window.db) return;
-  const { doc, deleteDoc } = window.firebaseModules;
-  try {
-    await deleteDoc(doc(window.db, collectionName, String(dataId)));
-  } catch (e) {
-    console.error("Error deleting from cloud:", e);
-  }
-}
-
-// Real-time listener para mag-sync ang lahat ng data mula sa Firebase
-function initCloudSync() {
-  if (!window.db) {
-    // Kung sakaling offline o naglo-load pa ang window.db, hintayin nang kaunti
-    setTimeout(initCloudSync, 500);
-    return;
-  }
-  const { collection, onSnapshot } = window.firebaseModules;
-
-  // 1. Products Sync
-  onSnapshot(collection(window.db, "products"), (snapshot) => {
-    state.products = [];
-    snapshot.forEach((docSnap) => {
-      state.products.push({ firebaseId: docSnap.id, ...docSnap.data() });
-    });
-    if(state.products.length === 0) {
-      // Default initial products kung wala pa sa cloud
-      const defaultProds = [
-        {id:1,name:"Dinurado",kilo:"25KG",dealer:450,retail:500,stock:18,min:10},
-        {id:2,name:"Dinurado",kilo:"10KG",dealer:190,retail:215,stock:25,min:10},
-        {id:3,name:"Dinurado",kilo:"5KG",dealer:100,retail:115,stock:7,min:10},
-        {id:4,name:"Premium Rice",kilo:"25KG",dealer:500,retail:550,stock:8,min:10}
-      ];
-      defaultProds.forEach(p => saveToCloud("products", p.id, p));
-    }
-    renderAll();
-  });
-
-  // 2. Customers Sync
-  onSnapshot(collection(window.db, "customers"), (snapshot) => {
-    state.customers = [];
-    snapshot.forEach((docSnap) => {
-      state.customers.push({ firebaseId: docSnap.id, ...docSnap.data() });
-    });
-    renderCustomers();
-  });
-
-  // 3. Sales Sync
-  onSnapshot(collection(window.db, "sales"), (snapshot) => {
-    state.sales = [];
-    snapshot.forEach((docSnap) => {
-      state.sales.push({ firebaseId: docSnap.id, ...docSnap.data() });
-    });
-    renderSales();
-    renderDashboard();
-  });
-
-  // 4. Orders Sync
-  onSnapshot(collection(window.db, "orders"), (snapshot) => {
-    state.orders = [];
-    snapshot.forEach((docSnap) => {
-      state.orders.push({ firebaseId: docSnap.id, ...docSnap.data() });
-    });
-    renderOrders();
-  });
-
-  // 5. Expenses Sync
-  onSnapshot(collection(window.db, "expenses"), (snapshot) => {
-    state.expenses = [];
-    snapshot.forEach((docSnap) => {
-      state.expenses.push({ firebaseId: docSnap.id, ...docSnap.data() });
-    });
-    renderExpenses();
-    renderDashboard();
-  });
-
-  // 6. Purchases Sync
-  onSnapshot(collection(window.db, "purchases"), (snapshot) => {
-    state.purchases = [];
-    snapshot.forEach((docSnap) => {
-      state.purchases.push({ firebaseId: docSnap.id, ...docSnap.data() });
-    });
-    renderPurchases();
-  });
-}
-
-// Local save fallback para sa user session
-const save=()=>localStorage.setItem("jgg_state",JSON.stringify(state));
-
-const normalizeState=()=>{
-  state.panukli=Number(state.panukli||0);
-  if(!Array.isArray(state.products)) state.products=[];
-  if(!Array.isArray(state.customers)) state.customers=[];
-  if(!Array.isArray(state.sales)) state.sales=[];
-  if(!Array.isArray(state.orders)) state.orders=[];
-  if(!Array.isArray(state.expenses)) state.expenses=[];
-  if(!Array.isArray(state.purchases)) state.purchases=[];
-  if(!Array.isArray(state.cart)) state.cart=[];
-};
-
-const load=()=>{
-  normalizeState();
-  initCloudSync(); // Simulan ang pag-load at pag-sync mula sa Firebase
-};
-load();
-
-const loginScreen=document.getElementById("loginScreen"),app=document.getElementById("app");
-document.getElementById("loginForm").addEventListener("submit",e=>{
-  e.preventDefault();const u=document.getElementById("username").value.trim().toLowerCase(),p=document.getElementById("password").value;
-  if(accounts[u]&&accounts[u].password===p){state.user={username:u,...accounts[u]};localStorage.setItem("jgg_user",JSON.stringify(state.user));document.getElementById("loginError").textContent="";startApp()}
-  else {document.getElementById("loginError").textContent="Invalid username or password. Please check your login details.";}
+const cloudPayload=()=>({
+  products:state.products, customers:state.customers, sales:state.sales, orders:state.orders,
+  expenses:state.expenses, purchases:state.purchases, payments:state.payments, panukli:Number(state.panukli||0),
+  schemaVersion:1, updatedAtClient:new Date().toISOString(), updatedBy:auth.currentUser?.email||""
 });
-
-function startApp(){
-  document.querySelectorAll(".page-section").forEach(x=>{x.classList.remove("active");x.setAttribute("aria-hidden","true")});
-  let saved=null;try{saved=JSON.parse(localStorage.getItem("jgg_user")||"null")}catch(_){localStorage.removeItem("jgg_user")}
-  if(saved&&accounts[String(saved.username||"").toLowerCase()]&&saved.role===accounts[String(saved.username||"").toLowerCase()].role) state.user={username:String(saved.username).toLowerCase(),...accounts[String(saved.username).toLowerCase()]};
-  else if(!state.user||!accounts[String(state.user.username||"").toLowerCase()]){state.user=null;localStorage.removeItem("jgg_user")}
-  if(!state.user)return;
-  loginScreen.classList.add("hidden");app.classList.remove("hidden");
-  document.getElementById("currentUser").textContent=state.user.name;document.getElementById("currentRole").textContent=state.user.role;document.getElementById("avatar").textContent=state.user.name.charAt(0).toUpperCase();
-  app.classList.toggle("cashier",state.user.role==="CASHIER");document.getElementById("todayDate").textContent=dateLabel();applyAccess();renderAll();navigate("dashboard");
-}
-
-function applyAccess(){
-  document.querySelectorAll(".admin-only-section").forEach(x=>x.classList.toggle("visible",state.user.role==="ADMIN"));
-  document.querySelectorAll(".admin-only").forEach(x=>x.style.display=state.user.role==="ADMIN"?"flex":"none");
-}
-
-function navigate(section){
-  const target=document.getElementById(section);if(!target)return;
-  if(target.classList.contains("admin-only-section")&&state.user.role!=="ADMIN"){alert("ADMIN access only.");return}
-  document.querySelectorAll(".page-section").forEach(x=>{x.classList.remove("active");x.setAttribute("aria-hidden","true")});target.classList.add("active");target.setAttribute("aria-hidden","false");
-  document.querySelectorAll(".nav-item").forEach(x=>{const selected=x.dataset.section===section;x.classList.toggle("active",selected);x.setAttribute("aria-current",selected?"page":"false")});
-  const title=target.querySelector("h3")?.textContent||"Dashboard";document.getElementById("pageTitle").textContent=title;document.getElementById("pageSubtitle").textContent=section==="dashboard"?"Business overview for today":"Manage "+title.toLowerCase()+".";document.getElementById("sidebar").classList.remove("open");
-}
-
-document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.section)));
-document.querySelectorAll("[data-section-jump]").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.sectionJump)));
-document.getElementById("menuBtn").addEventListener("click",()=>document.getElementById("sidebar").classList.toggle("open"));
-document.getElementById("logoutBtn").addEventListener("click",()=>{localStorage.removeItem("jgg_user");location.reload()});
-
-function renderDashboard(){
-  const today=state.sales.filter(s=>s.date===todayISO()),expenses=state.expenses.filter(e=>e.date===todayISO());
-  const sales=today.reduce((a,s)=>a+s.total,0),profit=today.reduce((a,s)=>a+s.profit,0),exp=expenses.reduce((a,e)=>a+e.amount,0);
-  document.getElementById("salesValue").textContent=peso(sales);document.getElementById("profitValue").textContent=peso(profit);document.getElementById("expensesValue").textContent=peso(exp);
-  const low=state.products.filter(p=>p.stock<=p.min);document.getElementById("lowStockValue").textContent=low.length;
-  const by=s=>state.products.filter(p=>p.kilo===s).reduce((a,p)=>a+p.stock,0);document.getElementById("stock25").textContent=by("25KG");document.getElementById("stock10").textContent=by("10KG");document.getElementById("stock5").textContent=by("5KG");
-  document.getElementById("lowStockList").innerHTML=low.length?low.map(p=>`<div class="low-item"><strong>${p.name} (${p.kilo})</strong><span>${p.stock} pcs.</span></div>`).join(""):`<div class="low-item"><strong>No low stock items</strong><span>Good</span></div>`;
-  document.getElementById("panukliDashboard").textContent=peso(state.panukli);
-}
-
-function renderProducts(){
-  const tbody=document.getElementById("productsTable");
-  if(!tbody) return;
-  tbody.innerHTML=sortedProducts().map(p=>`<tr class="product-row${Number(selectedProductId)===Number(p.id)?" selected-row":""}" data-product-id="${p.id}" tabindex="0"><td>${p.id}</td><td>${p.supplierName||"—"}</td><td>${p.supplierAddress||"—"}</td><td>${p.supplierContact||"—"}</td><td>${p.name}</td><td>${p.kilo}</td><td>${peso(p.dealer)}</td><td>${peso(p.retail)}</td><td>${Number(p.stock)||0} pcs.</td></tr>`).join("") || `<tr><td colspan="9" class="empty-cell">No products available.</td></tr>`;
-  tbody.querySelectorAll(".product-row").forEach(row=>{
-    const select=()=>selectProduct(Number(row.dataset.productId));
-    row.addEventListener("click",select);
+const save=()=>{
+  const localPayload={...state,user:null,cart:[]};
+  try{localStorage.setItem("jgg_state",JSON.stringify(localPayload));}catch(e){console.warn("Local backup could not be saved",e)}
+  if(!cloudReady||!auth.currentUser||applyingCloudData)return;
+  const payload=cloudPayload();
+  const json=JSON.stringify(payload);
+  lastCloudJson=json;
+  saveQueue=saveQueue.then(()=>setDoc(businessDataRef,{...payload,updatedAt:serverTimestamp()})).catch(err=>{
+    console.error("Firebase save failed:",err);
+    showCloudError("Hindi na-save sa shared database. Suriin ang internet connection at Firestore Rules.");
   });
-  updateProductActionButtons();
+};
+function showCloudError(message){
+  const el=document.getElementById("loginError");
+  if(el && document.getElementById("loginScreen") && !document.getElementById("loginScreen").classList.contains("hidden")) el.textContent=message;
+  else console.warn(message);
 }
-
-function selectProduct(id){
-  selectedProductId=id;
-  renderProducts();
+function applyCloudPayload(data){
+  applyingCloudData=true;
+  ["products","customers","sales","orders","expenses","purchases","payments"].forEach(k=>{if(Array.isArray(data[k]))state[k]=data[k]});
+  if(data.panukli!==undefined)state.panukli=Number(data.panukli)||0;
+  normalizeState();
+  try{localStorage.setItem("jgg_state",JSON.stringify({...state,user:null,cart:[]}));}catch(_){}
+  applyingCloudData=false;
 }
-
-function updateProductActionButtons(){
-  const p=state.products.find(x=>Number(x.id)===Number(selectedProductId));
-  const editBtn=document.getElementById("editProductBtn"),deleteBtn=document.getElementById("deleteProductBtn");
-  if(editBtn)editBtn.disabled=!p;
-  if(deleteBtn)deleteBtn.disabled=!p;
-}
-
-function renderExpenses(){
-  const tbody=document.getElementById("expensesTable");
-  if(!tbody) return;
-  const period=document.getElementById("expenseMonth")?.value||"Whole Year";
-  const monthIndex={January:0,February:1,March:2,April:3,May:4,June:5,July:6,August:7,September:8,October:9,November:10,December:11};
-  const currentYear=new Date().getFullYear();
-  const rows=[...(state.expenses||[])].filter(e=>{const d=new Date(String(e.date||"")+"T00:00:00");return d.getFullYear()===currentYear&&(period==="Whole Year"||d.getMonth()===monthIndex[period])}).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||""))||Number(b.id||0)-Number(b.id||0));
-  const total=rows.reduce((sum,e)=>sum+(Number(e.amount||0)),0);
-  const totalLabel=document.getElementById("expenseTotalLabel"),totalValue=document.getElementById("expenseTotalValue");
-  if(totalLabel)totalLabel.textContent=`Total Expenses — ${period}`;if(totalValue)totalValue.textContent=peso(total);
-  tbody.innerHTML=rows.map(e=>`<tr><td>${e.id}</td><td>${e.date||""}</td><td>${e.description||""}</td><td>${peso(e.amount)}</td></tr>`).join("") || `<tr><td colspan="4" class="empty-cell">No expenses recorded.</td></tr>`;
-}
-
-function renderPurchases(){
-  const tbody=document.getElementById("purchasesTable");
-  if(!tbody) return;
-  const rows=[...(state.purchases||[])].sort((a,b)=>Number(a.id||0)-Number(b.id||0));
-  tbody.innerHTML=rows.map(x=>`<tr><td>${x.id}</td><td>${x.poNumber||"—"}</td><td>${x.supplierName||"—"}</td><td>${x.supplierAddress||"—"}</td><td>${x.supplierContact||"—"}</td><td>${x.date||""}</td><td>${x.product||""}</td><td>${Number(x.qty)||0}</td><td>${peso(x.cost)}</td><td>${x.status||"Delivered"}</td></tr>`).join("") || `<tr><td colspan="10" class="empty-cell">No purchases recorded.</td></tr>`;
-}
-
-function renderSales(){
-  const tbody=document.getElementById("salesTable");
-  if(!tbody) return;
-  const month=document.getElementById("reportMonth")?.value||"Whole Year";
-  const monthIndex={January:0,February:1,March:2,April:3,May:4,June:5,July:6,August:7,September:8,October:9,November:10,December:11};
-  const rows=(state.sales||[]).filter(s=>{
-    if(month==="Whole Year")return true;
-    const d=new Date(String(s.date||"")+"T00:00:00");
-    return !Number.isNaN(d.getTime())&&d.getMonth()===monthIndex[month];
-  });
-  const isAdmin=state.user?.role==="ADMIN";
-  const revenue=rows.reduce((sum,s)=>sum+Number(s.total||0),0);
-  const profit=rows.reduce((sum,s)=>sum+Number(s.profit||0),0);
-  document.getElementById("reportTransactions").textContent=rows.length;
-  document.getElementById("reportRevenue").textContent=peso(revenue);
-  document.getElementById("reportProfit").textContent=peso(profit);
-  tbody.innerHTML=rows.map(s=>`<tr><td>${s.id}</td><td>${s.date}</td><td>${s.invoice||"—"}</td><td>${s.customer}</td><td>${s.paymentMode}</td>${isAdmin?`<td>${peso(s.dealer)}</td>`:""}<td>${peso(s.retail)}</td><td>${peso(s.profit)}</td><td>${peso(s.total)}</td></tr>`).join("") || `<tr><td colspan="${isAdmin?9:8}" class="empty-cell">No sales found.</td></tr>`;
-}
-
-function renderInventory(){
-  const tbody=document.getElementById("inventoryTable");
-  if(!tbody) return;
-  tbody.innerHTML=sortedProducts().map(p=>{const low=(Number(p.stock)||0)<=(Number(p.min)||0);return `<tr><td>${p.id}</td><td>${p.name}</td><td>${p.kilo}</td><td>${Number(p.stock)||0} pcs.</td><td>${peso((Number(p.stock)||0)*(Number(p.dealer)||0))}</td><td class="stock-status ${low?"low-stock":"sufficient-stock"}">${low?"Low Stock":"Sufficient Stock"}</td></tr>`}).join("") || `<tr><td colspan="6" class="empty-cell">No inventory available.</td></tr>`;
-}
-
-function renderCustomers(){
-  const tbody=document.getElementById("customersTable");
-  if(!tbody) return;
-  tbody.innerHTML=state.customers.map(c=>`<tr class="customer-row" data-customer-id="${c.id}"><td>${c.name}</td><td>${c.contact||"—"}</td><td>${c.address||"—"}</td><td>${c.storeName||"—"}</td><td>${peso(c.balance)}</td><td class="center">${c.kg25||0}</td><td class="center">${c.kg10||0}</td><td class="center">${c.kg5||0}</td></tr>`).join("") || `<tr><td colspan="8" class="empty-cell">No customers found.</td></tr>`;
-  const dl=document.getElementById("customerOptions");
-  if(dl) dl.innerHTML=state.customers.map(c=>`<option value="${c.name}"></option>`).join("");
-}
-
-function renderOrders(){
-  const tbody=document.getElementById("ordersTable");
-  if(!tbody) return;
-  const pending=state.orders.filter(o=>o.status==="For Delivery");
-  tbody.innerHTML=pending.map(o=>`<tr><td>${o.id}</td><td>${o.date}</td><td>${o.customer}</td><td>${o.address}</td><td>${o.contact}</td><td>${o.invoice}</td><td><span class="status-badge pending">Pending</span></td><td>${o.processedBy}</td><td><button class="primary-btn" onclick="markDelivered('${o.firebaseId}')">Mark Delivered</button></td></tr>`).join("")||`<tr><td colspan="9" class="empty-cell">No pending orders.</td></tr>`;
-}
-
-// Function para i-mark as delivered at i-update ang stock sa Cloud
-async function markDelivered(firebaseId) {
-  const order = state.orders.find(o => o.firebaseId === firebaseId);
-  if(!order) return;
-  
-  order.status = "Delivered";
-  order.delivered = true;
-  
-  // I-save ang updated order sa cloud
-  await saveToCloud("orders", firebaseId, order);
-  
-  // Magdagdag din sa sales
-  const newSale = {
-    id: Date.now(),
-    date: todayISO(),
-    dateTime: dateTimeLabel(),
-    customer: order.customer,
-    invoice: order.invoice,
-    product: order.product,
-    qty: order.qty,
-    retail: order.retail,
-    total: order.total,
-    profit: order.profit,
-    paymentMode: order.paymentMode,
-    user: state.user.name
-  };
-  await addDataToCloud("sales", newSale);
-  alert("Marked as delivered and recorded to sales!");
-}
-
-function renderAll(){
-  renderDashboard();
-  renderProducts();
-  renderInventory();
-  renderCustomers();
-  renderOrders();
-  renderExpenses();
-  renderPurchases();
-  renderSales();
-}
-
-
-
-
 const normalizeState=()=>{
   state.panukli=Number(state.panukli||0);
 
@@ -446,18 +194,72 @@ const load=()=>{
 load();
 
 const loginScreen=document.getElementById("loginScreen"),app=document.getElementById("app");
-document.getElementById("loginForm").addEventListener("submit",e=>{
- e.preventDefault();const u=document.getElementById("username").value.trim().toLowerCase(),p=document.getElementById("password").value;
- if(accounts[u]&&accounts[u].password===p){state.user={username:u,...accounts[u]};localStorage.setItem("jgg_user",JSON.stringify(state.user));document.getElementById("loginError").textContent="";startApp()}
- else {document.getElementById("loginError").textContent="Invalid username or password. Please check your login details.";}
+const loginButton=document.querySelector('#loginForm button[type="submit"]');
+document.getElementById("loginForm").addEventListener("submit",async e=>{
+ e.preventDefault();
+ const email=document.getElementById("username").value.trim().toLowerCase();
+ const password=document.getElementById("password").value;
+ const error=document.getElementById("loginError");
+ error.textContent="";
+ if(loginButton){loginButton.disabled=true;loginButton.textContent="CONNECTING...";}
+ try{await signInWithEmailAndPassword(auth,email,password);}
+ catch(err){
+   console.error("Firebase login failed:",err);
+   const messages={"auth/invalid-credential":"Mali ang email o password. Tiyaking ang account ay nasa Firebase Authentication.","auth/user-not-found":"Walang Firebase Authentication user para sa email na ito.","auth/wrong-password":"Mali ang password.","auth/invalid-email":"Hindi valid ang email address.","auth/too-many-requests":"Maraming nabigong login. Maghintay muna at subukan muli.","auth/network-request-failed":"Walang koneksyon sa internet. Suriin ang iyong connection."};
+   error.textContent=messages[err.code]||`Hindi makapag-login sa Firebase (${err.code||"error"}). Suriin ang Firebase Authentication at internet connection.`;
+ }finally{if(loginButton){loginButton.disabled=false;loginButton.textContent="LOGIN";}}
 });
-function startApp(){
+async function startApp(user){
+ if(!user)return;
+ const email=String(user.email||"").toLowerCase();
+ state.user={username:email,email,role:email===ADMIN_EMAIL?"ADMIN":"CASHIER",name:email===ADMIN_EMAIL?"Administrator":(user.displayName||email)};
  document.querySelectorAll(".page-section").forEach(x=>{x.classList.remove("active");x.setAttribute("aria-hidden","true")});
- let saved=null;try{saved=JSON.parse(localStorage.getItem("jgg_user")||"null")}catch(_){localStorage.removeItem("jgg_user")}if(saved&&accounts[String(saved.username||"").toLowerCase()]&&saved.role===accounts[String(saved.username||"").toLowerCase()].role)state.user={username:String(saved.username).toLowerCase(),...accounts[String(saved.username).toLowerCase()]};else if(!state.user||!accounts[String(state.user.username||"").toLowerCase()]){state.user=null;localStorage.removeItem("jgg_user")}if(!state.user)return;
+ try{
+   const snap=await getDoc(businessDataRef);
+   if(snap.exists()){
+     applyCloudPayload(snap.data());
+   }else{
+     // First-time cloud setup: migrate this browser's existing business data once.
+     let local=null;try{local=JSON.parse(localStorage.getItem("jgg_state")||"null")}catch(_){}
+     if(local&&typeof local==="object"){
+       ["products","customers","sales","orders","expenses","purchases","payments"].forEach(k=>{if(Array.isArray(local[k]))state[k]=local[k]});
+       if(local.panukli!==undefined)state.panukli=Number(local.panukli)||0;
+     }
+     normalizeState();
+     await setDoc(businessDataRef,{...cloudPayload(),createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+     lastCloudJson=JSON.stringify(cloudPayload());
+   }
+   cloudReady=true;
+   if(cloudUnsubscribe)cloudUnsubscribe();
+   cloudUnsubscribe=onSnapshot(businessDataRef,snapshot=>{
+     if(!snapshot.exists())return;
+     const data=snapshot.data();
+     const incoming={products:data.products,customers:data.customers,sales:data.sales,orders:data.orders,expenses:data.expenses,purchases:data.purchases,payments:data.payments,panukli:data.panukli};
+     const json=JSON.stringify(incoming);
+     if(json===lastCloudJson)return;
+     lastCloudJson=json;
+     applyCloudPayload(data);
+     if(state.user){renderAll();}
+   },err=>{console.error("Firestore listener error:",err);showCloudError("Hindi ma-sync ang shared database. Suriin ang Firestore Rules.");});
+ }catch(err){
+   console.error("Firebase data load failed:",err);
+   await signOut(auth).catch(()=>{});
+   cloudReady=false;
+   document.getElementById("loginError").textContent="Nakapasok sa Authentication ngunit hindi mabuksan ang Firestore. I-check ang Firestore Rules at tiyaking may database na ang project.";
+   return;
+ }
  loginScreen.classList.add("hidden");app.classList.remove("hidden");
  document.getElementById("currentUser").textContent=state.user.name;document.getElementById("currentRole").textContent=state.user.role;document.getElementById("avatar").textContent=state.user.name.charAt(0).toUpperCase();
  app.classList.toggle("cashier",state.user.role==="CASHIER");document.getElementById("todayDate").textContent=dateLabel();applyAccess();renderAll();navigate("dashboard");
 }
+onAuthStateChanged(auth,user=>{
+ if(user){startApp(user);}
+ else{
+   cloudReady=false;state.user=null;
+   if(cloudUnsubscribe){cloudUnsubscribe();cloudUnsubscribe=null;}
+   app.classList.add("hidden");loginScreen.classList.remove("hidden");
+ }
+});
 function applyAccess(){
  document.querySelectorAll(".admin-only-section").forEach(x=>x.classList.toggle("visible",state.user.role==="ADMIN"));
  document.querySelectorAll(".admin-only").forEach(x=>x.style.display=state.user.role==="ADMIN"?"flex":"none");
@@ -472,7 +274,7 @@ function navigate(section){
 document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.section)));
 document.querySelectorAll("[data-section-jump]").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.sectionJump)));
 document.getElementById("menuBtn").addEventListener("click",()=>document.getElementById("sidebar").classList.toggle("open"));
-document.getElementById("logoutBtn").addEventListener("click",()=>{localStorage.removeItem("jgg_user");location.reload()});
+document.getElementById("logoutBtn").addEventListener("click",async()=>{cloudReady=false;try{await signOut(auth)}catch(e){console.error(e)}});
 
 function renderDashboard(){
  const today=state.sales.filter(s=>s.date===todayISO()),expenses=state.expenses.filter(e=>e.date===todayISO());
@@ -797,9 +599,11 @@ function showPaymentHistory(){
  openModal("Payment History",`${escapeHtml(c.name)} • Current Balance: ${peso(c.balance)}`,`<div class="detail-table-wrap"><table><thead><tr><th>Date & Time</th><th>Amount Paid</th><th>Received By</th><th>Balance After Payment</th></tr></thead><tbody>${rows.map(p=>`<tr><td>${escapeHtml(p.dateTime||"—")}</td><td>${peso(p.amount)}</td><td>${escapeHtml(p.receivedBy||"—")}</td><td>${peso(p.balanceAfter)}</td></tr>`).join("")||`<tr><td colspan="4" class="empty-cell">No payment history yet.</td></tr>`}</tbody></table></div><div class="detail-total"><span>Current Balance</span><strong>${peso(c.balance)}</strong></div>`);
 }
 function clearDatabase(){
+ alert("Naka-disable muna ang Clear Database habang inililipat ang data sa Firebase, para maiwasan ang aksidenteng pagbura ng shared data.");return;
+ /* Deliberately disabled during Firebase migration. */
  if(state.user?.role!=="ADMIN"){alert("ADMIN access only.");return}
  const password=prompt("ADMIN ONLY\nEnter your admin password to continue:");
- if(password===null)return; if(password!==accounts[String(state.user?.username||"").toLowerCase()]?.password){alert("Incorrect password. Database was not cleared.");return}
+ if(password===null)return;
  if(!confirm("WARNING: This will permanently clear ALL business data including Products, Customers, Sales, Orders, Expenses, Purchases, Payment History, and Cart.\n\nContinue?"))return;
  if(!confirm("FINAL CONFIRMATION: Clear the entire database now? This cannot be undone."))return;
  state.products=[];state.customers=[];state.sales=[];state.orders=[];state.expenses=[];state.purchases=[];state.payments=[];state.cart=[];state.panukli=0;window.selectedCustomerId=null;selectedProductId=null;save();renderAll();alert("Database cleared successfully.");
@@ -920,14 +724,14 @@ function printSalesPDF(){
 document.getElementById("printSalesCSV").addEventListener("click",printSalesCSV);document.getElementById("printSalesPDF").addEventListener("click",printSalesPDF);
 
 function renderAll(){renderDashboard();renderProducts();renderInventory();renderCustomers();renderOrders();renderExpenses();renderPurchases();renderSales();populatePOS();updateProductActionButtons();renderUsers()}
-if(localStorage.getItem("jgg_user"))startApp();
+
 
 
 // Admin-only user management
 function renderUsers(){
  const tbody=document.getElementById("usersTable");if(!tbody)return;
- const entries=Object.entries(accounts);
- tbody.innerHTML=entries.map(([username,u])=>`<tr><td>${escapeHtml(username)}</td><td>${escapeHtml(u.name||"")}</td><td><span class="role-pill">${escapeHtml(u.role||"CASHIER")}</span></td><td><div class="button-group"><button class="primary-btn user-edit-btn" data-user="${escapeHtml(username)}">Edit</button><button class="danger-btn user-delete-btn" data-user="${escapeHtml(username)}" ${username===String(state.user?.username||"").toLowerCase()||u.role==="ADMIN"&&entries.filter(([,x])=>x.role==="ADMIN").length<=1?"disabled":""}>Delete</button></div></td></tr>`).join("")||`<tr><td colspan="4" class="empty-cell">Walang user account.</td></tr>`;
+ const email=auth.currentUser?.email||state.user?.email||"";
+ tbody.innerHTML=email?`<tr><td>${escapeHtml(email)}</td><td>${escapeHtml(state.user?.name||"Administrator")}</td><td><span class="role-pill">${escapeHtml(state.user?.role||"ADMIN")}</span></td><td>Manage accounts in Firebase Authentication</td></tr>`:`<tr><td colspan="4" class="empty-cell">Walang naka-login na Firebase user.</td></tr>`;
 }
 function openUserForm(username=""){
  if(!requireAdmin("manage users"))return;
@@ -946,9 +750,8 @@ function openUserForm(username=""){
   if(String(state.user?.username||"").toLowerCase()===username&&existing){state.user={username:newUsername,...accounts[newUsername]};localStorage.setItem("jgg_user",JSON.stringify(state.user));startApp();}
  });
 }
-const addUserButton=document.getElementById("addUserBtn");if(addUserButton)addUserButton.addEventListener("click",()=>openUserForm());
+const addUserButton=document.getElementById("addUserBtn");if(addUserButton){addUserButton.disabled=true;addUserButton.title="Manage users in Firebase Authentication";addUserButton.addEventListener("click",()=>alert("Para magdagdag ng Cashier, gumawa muna ng user sa Firebase Console > Authentication > Users. I-update rin ang Firestore Rules bago gamitin ang account."));}
 const usersTable=document.getElementById("usersTable");if(usersTable)usersTable.addEventListener("click",e=>{
  const edit=e.target.closest(".user-edit-btn"),del=e.target.closest(".user-delete-btn");
- if(edit)openUserForm(edit.dataset.user);
- if(del){const username=del.dataset.user,u=accounts[username];if(!u)return;if(username===String(state.user?.username||"").toLowerCase()){alert("Hindi maaaring i-delete ang kasalukuyang naka-login na account.");return}if(u.role==="ADMIN"&&Object.values(accounts).filter(x=>x.role==="ADMIN").length<=1){alert("Dapat may natitirang kahit isang Admin account.");return}if(confirm(`Sigurado ka bang i-delete ang user '${username}'?`)){delete accounts[username];saveAccounts();renderUsers();}}
+ if(edit||del)alert("Ang mga account ay pinamamahalaan sa Firebase Console > Authentication > Users, hindi sa local User Management.");
 });
