@@ -4,7 +4,7 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "
 
 // JAT Golden Grains Trading — Firebase shared database configuration.
 const firebaseConfig = {
-  apiKey: "AIzaSyBluaKKFE9CIyoF78eFNNZQNzlgyBbgms",
+  apiKey: "AIzaSyBluaKKFE9CIyoF78eFNNZQNzlgyBbgmsQ",
   authDomain: "jatgoldengrains.firebaseapp.com",
   projectId: "jatgoldengrains",
   storageBucket: "jatgoldengrains.firebasestorage.app",
