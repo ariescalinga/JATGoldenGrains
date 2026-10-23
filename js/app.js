@@ -22,6 +22,7 @@ let cloudUnsubscribe = null;
 let applyingCloudData = false;
 let lastCloudJson = "";
 let saveQueue = Promise.resolve();
+let restoreInProgress = false;
 
 const state={
   user:null,
@@ -54,6 +55,7 @@ const cloudPayload=()=>({
   schemaVersion:1, updatedAtClient:new Date().toISOString(), updatedBy:auth.currentUser?.email||""
 });
 const save=()=>{
+  if(restoreInProgress)return;
   const localPayload={...state,user:null,cart:[]};
   try{localStorage.setItem("jgg_state",JSON.stringify(localPayload));}catch(e){console.warn("Local backup could not be saved",e)}
   if(!cloudReady||!auth.currentUser||applyingCloudData)return;
@@ -234,6 +236,7 @@ async function startApp(user){
    cloudUnsubscribe=onSnapshot(businessDataRef,snapshot=>{
      if(!snapshot.exists())return;
      const data=snapshot.data();
+     if(restoreInProgress)return;
      const incoming={products:data.products,customers:data.customers,sales:data.sales,orders:data.orders,expenses:data.expenses,purchases:data.purchases,payments:data.payments,panukli:data.panukli};
      const json=JSON.stringify(incoming);
      if(json===lastCloudJson)return;
@@ -314,6 +317,95 @@ if(backupDataButton){
      alert("Hindi nagawa ang backup. Suriin ang internet connection at Firestore Rules, pagkatapos ay subukan muli.");
    }finally{
      backupDataButton.disabled=false;backupDataButton.textContent=originalText;
+   }
+ });
+}
+
+
+// Admin-only restore from a validated backup JSON. The current Firestore data is
+// downloaded first as a safety backup before any overwrite is attempted.
+const restoreDataButton=document.getElementById("restoreDataBtn");
+const restoreDataFileInput=document.getElementById("restoreDataFileInput");
+if(restoreDataButton && restoreDataFileInput){
+ restoreDataButton.addEventListener("click",()=>{
+   if(state.user?.role!=="ADMIN" || String(auth.currentUser?.email||"").toLowerCase()!==ADMIN_EMAIL){
+     alert("ADMIN access only. Hindi ka awtorisadong mag-restore ng data.");return;
+   }
+   if(!cloudReady){alert("Hindi pa handa ang koneksyon sa Firestore. Maghintay sandali at subukan muli.");return;}
+   restoreDataFileInput.value="";
+   restoreDataFileInput.click();
+ });
+ restoreDataFileInput.addEventListener("change",async()=>{
+   const file=restoreDataFileInput.files?.[0];
+   if(!file)return;
+   if(state.user?.role!=="ADMIN" || String(auth.currentUser?.email||"").toLowerCase()!==ADMIN_EMAIL){
+     alert("ADMIN access only. Hindi ka awtorisadong mag-restore ng data.");return;
+   }
+   let backup;
+   try{
+     if(file.size>5*1024*1024)throw new Error("Masyadong malaki ang JSON file. Pumili ng valid na JAT backup file.");
+     backup=JSON.parse(await file.text());
+   }catch(err){
+     alert("Hindi mabasa ang file. Pumili ng valid na JAT Golden Grains Backup JSON file.\n\nDetalye: "+(err.message||"Invalid JSON"));return;
+   }
+   if(!backup || backup.backupFormat!=="JAT Golden Grains Trading Firestore Backup" || backup.backupVersion!==1 || backup.firebaseProject!==firebaseConfig.projectId || backup.firestorePath!=="businessData/main" || !backup.data || typeof backup.data!=="object" || Array.isArray(backup.data)){
+     alert("Hindi tugma o hindi valid ang backup file. Kailangan itong backup ng JAT Golden Grains Trading mula sa Firebase project jatgoldengrains.");return;
+   }
+   const requiredArrays=["products","customers","sales","orders","expenses","purchases","payments"];
+   const missing=requiredArrays.filter(key=>!Array.isArray(backup.data[key]));
+   if(missing.length){alert("Hindi kumpleto ang backup file. Nawawala o invalid ang mga field na ito: "+missing.join(", ")+". Walang binagong data.");return;}
+   if(backup.data.panukli!==undefined && (!Number.isFinite(Number(backup.data.panukli)) || Number(backup.data.panukli)<0)){
+     alert("Invalid ang Panukli value sa backup. Walang binagong data.");return;
+   }
+   const payloadBytes=new Blob([JSON.stringify(backup.data)]).size;
+   if(payloadBytes>850*1024){alert("Masyadong malaki ang business data para ligtas na maibalik sa iisang Firestore document (mahigit 850 KB). Walang binagong data. Kailangan munang ilipat ang records sa magkakahiwalay na collections.");return;}
+   const summary=`Backup date: ${backup.exportedAt||"Hindi nakasaad"}\nProducts: ${backup.data.products.length}\nCustomers: ${backup.data.customers.length}\nSales: ${backup.data.sales.length}\nOrders: ${backup.data.orders.length}\nExpenses: ${backup.data.expenses.length}\nPurchases: ${backup.data.purchases.length}`;
+   if(!confirm("Nabasa at na-validate ang backup na ito.\n\n"+summary+"\n\nBABALA: Papalitan nito ang KASALUKUYANG shared business data sa Firestore. Ang mga record at pagbabago na wala sa backup ay maaaring mawala.\n\nMagpapatuloy lamang kung gusto mong ibalik ang data mula sa napiling backup."))return;
+
+   const appElement=document.getElementById("app");
+   const restoreButtonText=restoreDataButton.textContent;
+   restoreDataButton.disabled=true;restoreDataButton.textContent="Restoring...";
+   if(appElement)appElement.style.pointerEvents="none";
+   restoreInProgress=true;cloudReady=false;
+   try{
+     // Finish already queued saves before taking the pre-restore safety copy.
+     await saveQueue;
+     const currentSnapshot=await getDoc(businessDataRef);
+     if(!currentSnapshot.exists())throw new Error("Walang kasalukuyang Firestore document na maaaring i-backup bago mag-restore.");
+     const currentBackup={
+       backupFormat:"JAT Golden Grains Trading Firestore Backup",
+       backupVersion:1,
+       exportedAt:new Date().toISOString(),
+       firebaseProject:firebaseConfig.projectId,
+       firestorePath:"businessData/main",
+       data:currentSnapshot.data()
+     };
+     const currentBlob=new Blob([JSON.stringify(currentBackup,null,2)],{type:"application/json;charset=utf-8"});
+     const currentUrl=URL.createObjectURL(currentBlob);
+     const currentLink=document.createElement("a");
+     const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+     currentLink.href=currentUrl;currentLink.download=`JAT-Golden-Grains-Pre-Restore-Backup-${stamp}.json`;
+     document.body.appendChild(currentLink);currentLink.click();currentLink.remove();
+     setTimeout(()=>URL.revokeObjectURL(currentUrl),3000);
+     if(!confirm("Na-trigger ang pag-download ng safety backup ng KASALUKUYANG Firestore data: JAT-Golden-Grains-Pre-Restore-Backup-....json\n\nKung HINDI mo nakitang na-download ang file, piliin ang Cancel at i-click muna ang Backup Data.\n\nKung nakita mong na-download ito at nais mo pa ring palitan ang current data ng napiling backup, piliin ang OK."))return;
+
+     const currentData=currentSnapshot.data();
+     const restorePayload={...backup.data,updatedAt:serverTimestamp(),restoredAt:serverTimestamp(),restoredBy:auth.currentUser.email};
+     if(currentData.createdAt!==undefined)restorePayload.createdAt=currentData.createdAt;
+     else delete restorePayload.createdAt;
+     await setDoc(businessDataRef,restorePayload);
+     applyCloudPayload(restorePayload);
+     lastCloudJson=JSON.stringify({products:state.products,customers:state.customers,sales:state.sales,orders:state.orders,expenses:state.expenses,purchases:state.purchases,payments:state.payments,panukli:state.panukli});
+     alert("Matagumpay na na-restore ang backup sa shared Firestore. Na-download din ang safety backup ng dating data bago ito pinalitan. Suriin ang Products, Inventory, Customers, Sales, at Orders bago muling magproseso ng totoong transaction.");
+     renderAll();
+   }catch(err){
+     console.error("Firestore restore failed:",err);
+     alert("Hindi natuloy ang restore. Hindi namin makumpirmang naibalik ang backup. Suriin ang internet connection at Firestore Rules. Kung may error na permission-denied, huwag baguhin ang rules nang hindi muna sinusuri.");
+   }finally{
+     restoreInProgress=false;cloudReady=!!auth.currentUser;
+     if(appElement)appElement.style.pointerEvents="";
+     restoreDataButton.disabled=false;restoreDataButton.textContent=restoreButtonText;
+     restoreDataFileInput.value="";
    }
  });
 }

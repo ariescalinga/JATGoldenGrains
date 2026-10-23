@@ -75,7 +75,7 @@
             <h3>Dashboard</h3>
             <p>Monitor today's business activity at a glance.</p>
           </div>
-          <div class="button-group dashboard-admin-actions"><div class="date-badge" id="todayDate"></div><button id="backupDataBtn" class="primary-btn admin-only" type="button" style="display:none">Backup Data</button><button id="clearDatabaseBtn" class="danger-btn admin-only" style="display:none">Clear Database</button></div>
+          <div class="button-group dashboard-admin-actions"><div class="date-badge" id="todayDate"></div><button id="backupDataBtn" class="primary-btn admin-only" type="button" style="display:none">Backup Data</button><button id="restoreDataBtn" class="primary-btn secondary-btn admin-only" type="button" style="display:none">Restore Data</button><input id="restoreDataFileInput" type="file" accept=".json,application/json" hidden><button id="clearDatabaseBtn" class="danger-btn admin-only" style="display:none">Clear Database</button></div>
         </div>
 
         <div class="stats-grid">
@@ -208,6 +208,6 @@
       <div id="modalBody" class="modal-body"></div>
     </div>
   </div>
-  <script type="module" src="js/app.js?v=20261023-backup1"></script>
+  <script type="module" src="js/app.js?v=20261023-restore1"></script>
 </body>
 </html>
