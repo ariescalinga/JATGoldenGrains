@@ -806,7 +806,7 @@ function showPaymentHistory(){
 async function clearDatabase(){
  if(state.user?.role!=="ADMIN" || String(auth.currentUser?.email||"").trim().toLowerCase()!==ADMIN_EMAIL){alert("ADMIN access only. Hindi ka awtorisadong mag-clear ng database.");return;}
  if(!cloudReady || !auth.currentUser){alert("Hindi pa handa ang koneksyon sa Firestore. Walang binagong data.");return;}
- if(!confirm("BABALA: Buburahin nito ang LAHAT ng shared business data sa Firebase: Products, Customers, Sales, Orders, Expenses, Purchases, Payment History at Panukli. Hindi ito basta maibabalik maliban kung may backup.\\n\\nGusto mo bang magpatuloy?"))return;
+ if(!confirm("BABALA: Buburahin nito ang LAHAT ng shared business data sa Firebase: Products, Customers, Sales, Orders, Expenses, Purchases, Payment History at Panukli. Hindi ito basta maibabalik maliban kung may backup. Gusto mo bang magpatuloy?"))return;
  const btn=document.getElementById("clearDatabaseBtn");
  if(btn){btn.disabled=true;btn.textContent="Backing up...";}
  try{
