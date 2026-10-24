@@ -17,6 +17,8 @@ const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 const businessDataRef = doc(db, "businessData", "main");
 const ADMIN_EMAIL = "aries.calinga@gmail.com";
+const CASHIER_EMAIL = "jatgoldengrainstrading@gmail.com";
+const ALLOWED_EMAILS = [ADMIN_EMAIL, CASHIER_EMAIL];
 let cloudReady = false;
 let cloudUnsubscribe = null;
 let applyingCloudData = false;
@@ -213,8 +215,15 @@ document.getElementById("loginForm").addEventListener("submit",async e=>{
 });
 async function startApp(user){
  if(!user)return;
- const email=String(user.email||"").toLowerCase();
- state.user={username:email,email,role:email===ADMIN_EMAIL?"ADMIN":"CASHIER",name:email===ADMIN_EMAIL?"Administrator":(user.displayName||email)};
+ const email=String(user.email||"").trim().toLowerCase();
+ if(!ALLOWED_EMAILS.includes(email)){
+   cloudReady=false;
+   await signOut(auth).catch(()=>{});
+   const error=document.getElementById("loginError");
+   if(error)error.textContent="Walang access ang account na ito sa JAT Golden Grains Trading. Gamitin ang awtorisadong Admin o Cashier email.";
+   return;
+ }
+ state.user={username:email,email,role:email===ADMIN_EMAIL?"ADMIN":"CASHIER",name:email===ADMIN_EMAIL?"Administrator":(user.displayName||"Cashier")};
  document.querySelectorAll(".page-section").forEach(x=>{x.classList.remove("active");x.setAttribute("aria-hidden","true")});
  try{
    const snap=await getDoc(businessDataRef);
