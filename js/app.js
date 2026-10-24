@@ -579,25 +579,19 @@ function renderDeliveryHistory(){
 }
 
 function markOrderDelivered(encodedKey){
- try{
-   const key=decodeURIComponent(encodedKey);
-   const items=state.orders.filter(o=>orderGroupKey(o)===key&&o.delivered!==true&&o.status!=="Delivered");
-   if(!items.length){alert("Hindi mahanap ang pending order na ito, o na-mark na itong Delivered.");renderOrders();return;}
-   if(!confirm(`Mark Sales Invoice ${items[0].invoice||"—"} as Delivered? This will record the completed sale in Reports.`))return;
-   const customerName=items[0].customer||"Walk-in";
-   let c=state.customers.find(x=>String(x.name||"").trim().toLowerCase()===customerName.trim().toLowerCase());
-   let saleId=state.sales.length?Math.max(...state.sales.map(s=>Number(s.id)||0))+1:1;
-   items.forEach(order=>{
-     const qty=Number(order.qty)||0,retail=Number(order.retail)||0,dealer=Number(order.dealer)||0,totalItem=qty*retail,profit=Number(order.profit)||qty*(retail-dealer);
-     if(c){if(order.paymentMode==="Utang")c.balance=(Number(c.balance)||0)+totalItem;const m=String(order.product||"").match(/\((25KG|10KG|5KG)\)$/i)?.[1]?.toUpperCase();if(m==="25KG")c.kg25=(c.kg25||0)+qty;if(m==="10KG")c.kg10=(c.kg10||0)+qty;if(m==="5KG")c.kg5=(c.kg5||0)+qty;}
-     state.sales.push({id:saleId++,transactionId:order.transactionId||key,date:todayISO(),dateTime:dateTimeLabel(),customer:customerName,contact:order.contact||"",address:order.address||"",invoice:order.invoice||"",product:order.product,qty,dealer,retail,profit,total:totalItem,status:"Delivered",paymentMode:order.paymentMode||"Cash",user:order.processedBy||state.user?.name||""});
-     order.status="Delivered";order.delivered=true;order.deliveredDate=dateTimeLabel();order.deliveredBy=state.user?.name||"";
-   });
-   save();renderAll();alert(`Sales Invoice ${items[0].invoice||"—"} has been marked as Delivered and recorded in Reports.`);
- }catch(err){console.error("Mark delivered failed:",err);alert("Hindi na-update ang order. I-refresh ang page at subukan muli.");}
+ const key=decodeURIComponent(encodedKey),items=state.orders.filter(o=>orderGroupKey(o)===key&&o.delivered!==true);if(!items.length)return;
+ if(!confirm(`Mark Sales Invoice ${items[0].invoice||"—"} as Delivered? This will record the completed sale in Reports.`))return;
+ const customerName=items[0].customer||"Walk-in";
+ let c=state.customers.find(x=>x.name.trim().toLowerCase()===customerName.trim().toLowerCase());
+ let saleId=state.sales.length?Math.max(...state.sales.map(s=>Number(s.id)||0))+1:1;
+ items.forEach(order=>{
+   const qty=Number(order.qty)||0,retail=Number(order.retail)||0,dealer=Number(order.dealer)||0,totalItem=qty*retail,profit=Number(order.profit)||qty*(retail-dealer);
+   if(c){if(order.paymentMode==="Utang")c.balance=(Number(c.balance)||0)+totalItem;const m=String(order.product||"").match(/\((25KG|10KG|5KG)\)$/i)?.[1]?.toUpperCase();if(m==="25KG")c.kg25=(c.kg25||0)+qty;if(m==="10KG")c.kg10=(c.kg10||0)+qty;if(m==="5KG")c.kg5=(c.kg5||0)+qty;}
+   state.sales.push({id:saleId++,transactionId:order.transactionId||key,date:todayISO(),dateTime:dateTimeLabel(),customer:customerName,contact:order.contact||"",address:order.address||"",invoice:order.invoice||"",product:order.product,qty,dealer,retail,profit,total:totalItem,status:"Delivered",paymentMode:order.paymentMode||"Cash",user:order.processedBy||state.user.name});
+   order.status="Delivered";order.delivered=true;order.deliveredDate=dateTimeLabel();order.deliveredBy=state.user.name;
+ });
+ save();renderAll();alert(`Sales Invoice ${items[0].invoice||"—"} has been marked as Delivered and recorded in Reports.`);
 }
-// app.js is an ES module, so inline HTML handlers need an explicit window export.
-window.markOrderDelivered=markOrderDelivered;
 
 function populatePOS(){
  const sel=document.getElementById("posProduct");
@@ -748,47 +742,16 @@ function showPaymentHistory(){
  const rows=state.payments.filter(p=>Number(p.customerId)===Number(c.id)).sort((a,b)=>Number(b.id||0)-Number(a.id||0));
  openModal("Payment History",`${escapeHtml(c.name)} • Current Balance: ${peso(c.balance)}`,`<div class="detail-table-wrap"><table><thead><tr><th>Date & Time</th><th>Amount Paid</th><th>Received By</th><th>Balance After Payment</th></tr></thead><tbody>${rows.map(p=>`<tr><td>${escapeHtml(p.dateTime||"—")}</td><td>${peso(p.amount)}</td><td>${escapeHtml(p.receivedBy||"—")}</td><td>${peso(p.balanceAfter)}</td></tr>`).join("")||`<tr><td colspan="4" class="empty-cell">No payment history yet.</td></tr>`}</tbody></table></div><div class="detail-total"><span>Current Balance</span><strong>${peso(c.balance)}</strong></div>`);
 }
-async function clearDatabase(){
- if(state.user?.role!=="ADMIN" || String(auth.currentUser?.email||"").trim().toLowerCase()!==ADMIN_EMAIL){alert("ADMIN access only. Hindi ka awtorisadong mag-clear ng database.");return;}
- if(!cloudReady || !auth.currentUser){alert("Hindi pa handa ang koneksyon sa Firestore. Walang binagong data.");return;}
- if(!confirm("BABALA: Buburahin nito ang LAHAT ng shared business data sa Firebase: Products, Customers, Sales, Orders, Expenses, Purchases, Payment History at Panukli. Hindi ito basta maibabalik maliban kung may backup.
-
-Gusto mo bang magpatuloy?"))return;
- const btn=document.getElementById("clearDatabaseBtn");
- if(btn){btn.disabled=true;btn.textContent="Backing up...";}
- try{
-   // Wait for any previous saves, then download a verified safety copy first.
-   await saveQueue;
-   const snapshot=await getDoc(businessDataRef);
-   if(!snapshot.exists())throw new Error("Walang shared Firestore document na maibabackup.");
-   const backup={backupFormat:"JAT Golden Grains Trading Firestore Backup",backupVersion:1,exportedAt:new Date().toISOString(),firebaseProject:firebaseConfig.projectId,firestorePath:"businessData/main",data:snapshot.data()};
-   const blob=new Blob([JSON.stringify(backup,null,2)],{type:"application/json;charset=utf-8"});
-   const url=URL.createObjectURL(blob),link=document.createElement("a");
-   link.href=url;link.download=`JAT-Golden-Grains-Pre-Clear-Backup-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
-   document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
-   if(!confirm("Na-download ang safety backup. Itago ito sa ligtas na lugar.
-
-FINAL CONFIRMATION: Burahin na ang shared database ngayon? Hindi na ito maibabalik nang walang backup."))return;
-   const previous={products:state.products,customers:state.customers,sales:state.sales,orders:state.orders,expenses:state.expenses,purchases:state.purchases,payments:state.payments,panukli:state.panukli};
-   state.products=[];state.customers=[];state.sales=[];state.orders=[];state.expenses=[];state.purchases=[];state.payments=[];state.cart=[];state.panukli=0;
-   if(btn)btn.textContent="Clearing...";
-   try{
-     const payload=cloudPayload();
-     await setDoc(businessDataRef,{...payload,updatedAt:serverTimestamp()});
-     lastCloudJson=JSON.stringify(payload);
-     try{localStorage.setItem("jgg_state",JSON.stringify({...state,user:null,cart:[]}));}catch(e){console.warn("Local state could not be updated",e)}
-     window.selectedCustomerId=null;selectedProductId=null;renderAll();
-     alert("Matagumpay na na-clear ang shared database. Na-download ang safety backup bago burahin ang data.");
-   }catch(writeErr){
-     state.products=previous.products;state.customers=previous.customers;state.sales=previous.sales;state.orders=previous.orders;state.expenses=previous.expenses;state.purchases=previous.purchases;state.payments=previous.payments;state.panukli=previous.panukli;
-     renderAll();throw writeErr;
-   }
- }catch(err){console.error("Clear database failed:",err);alert("Hindi na-clear ang database. Walang kumpirmadong pagbabago sa Firebase. Suriin ang internet connection at Firestore Rules.
-
-Detalye: "+(err.message||"Unknown error"));}
- finally{if(btn){btn.disabled=false;btn.textContent="Clear Database";}}
+function clearDatabase(){
+ alert("Naka-disable muna ang Clear Database habang inililipat ang data sa Firebase, para maiwasan ang aksidenteng pagbura ng shared data.");return;
+ /* Deliberately disabled during Firebase migration. */
+ if(state.user?.role!=="ADMIN"){alert("ADMIN access only.");return}
+ const password=prompt("ADMIN ONLY\nEnter your admin password to continue:");
+ if(password===null)return;
+ if(!confirm("WARNING: This will permanently clear ALL business data including Products, Customers, Sales, Orders, Expenses, Purchases, Payment History, and Cart.\n\nContinue?"))return;
+ if(!confirm("FINAL CONFIRMATION: Clear the entire database now? This cannot be undone."))return;
+ state.products=[];state.customers=[];state.sales=[];state.orders=[];state.expenses=[];state.purchases=[];state.payments=[];state.cart=[];state.panukli=0;window.selectedCustomerId=null;selectedProductId=null;save();renderAll();alert("Database cleared successfully.");
 }
-
 function addCustomer(){openModal("Add Customer","Enter the customer's details.",customerFormHtml());document.getElementById("customerForm").addEventListener("submit",e=>{e.preventDefault();saveCustomerFromModal(null)})}
 function editCustomer(){
  const c=state.customers.find(x=>Number(x.id)===Number(window.selectedCustomerId));if(!c){alert("Pumili muna ng customer sa table.");return}
