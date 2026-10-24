@@ -756,13 +756,49 @@ function productFormHtml(p={name:"",kilo:"25KG",dealer:0,retail:0,stock:0,min:10
 function addProduct(){
  if(!requireAdmin("add products"))return;
  openModal("Add Product","Enter all product details.",productFormHtml());
+ wireSupplierAutofill();
  document.getElementById("productForm").addEventListener("submit",e=>{e.preventDefault();saveProductFromModal(null)});
 }
 function editProduct(id=selectedProductId){
  if(!requireAdmin("edit products"))return;
  const p=state.products.find(x=>Number(x.id)===Number(id));if(!p){alert("Pumili muna ng product sa table.");return}
  openModal("Edit Product","All editable product details are shown below.",productFormHtml(p));
+ wireSupplierAutofill(p);
  document.getElementById("productForm").addEventListener("submit",e=>{e.preventDefault();saveProductFromModal(p)});
+}
+function wireSupplierAutofill(existing=null){
+ const nameInput=document.getElementById("modalSupplierName");
+ const addressInput=document.getElementById("modalSupplierAddress");
+ const contactInput=document.getElementById("modalSupplierContact");
+ if(!nameInput||!addressInput||!contactInput)return;
+ const normalize=value=>String(value||"").trim().toLocaleLowerCase();
+ const findSupplier=name=>{
+  const wanted=normalize(name);
+  if(!wanted)return null;
+  const matches=state.products.filter(p=>normalize(p.supplierName)===wanted);
+  matches.sort((a,b)=>(Number(Boolean(b.supplierAddress))+Number(Boolean(b.supplierContact)))-(Number(Boolean(a.supplierAddress))+Number(Boolean(a.supplierContact))));
+  return matches.find(p=>p.supplierAddress||p.supplierContact)||matches[0]||null;
+ };
+ const autofill=()=>{
+  const supplier=findSupplier(nameInput.value);
+  if(!supplier)return;
+  addressInput.value=supplier.supplierAddress||"";
+  contactInput.value=supplier.supplierContact||"";
+  addressInput.dataset.autofilled="1";
+  contactInput.dataset.autofilled="1";
+ };
+ nameInput.addEventListener("change",autofill);
+ nameInput.addEventListener("input",()=>{
+  const supplier=findSupplier(nameInput.value);
+  if(supplier)autofill();
+  else if(addressInput.dataset.autofilled==="1"&&contactInput.dataset.autofilled==="1"){
+   addressInput.value="";
+   contactInput.value="";
+   delete addressInput.dataset.autofilled;
+   delete contactInput.dataset.autofilled;
+  }
+ });
+ if(nameInput.value.trim())autofill();
 }
 function saveProductFromModal(existing){
  const values=validateProductValues(document.getElementById("modalProductName").value,document.getElementById("modalProductKilo").value,Number(document.getElementById("modalDealer").value),Number(document.getElementById("modalRetail").value),Number(document.getElementById("modalStock").value),Number(document.getElementById("modalMin").value),document.getElementById("modalSupplierName").value,document.getElementById("modalSupplierAddress").value,document.getElementById("modalSupplierContact").value);if(!values)return;
