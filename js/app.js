@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
 // JAT Golden Grains Trading — Firebase shared database configuration.
@@ -45,7 +45,7 @@ const state={
 let accounts={"aries.calinga@gmail.com":{role:"ADMIN",name:"Administrator"}};
 function saveAccounts(){ /* Firebase Auth accounts must be managed in Firebase Console. */ }
 let selectedProductId=null;
-const kiloRank=k=>({"25KG":25,"10KG":10,"5KG":5,"4KG":4,"3KG":3,"2KG":2,"1KG":1}[String(k||"").toUpperCase()]||0);
+const kiloRank=k=>({"25KG":25,"10KG":10,"5KG":5,"1KG":1}[String(k||"").toUpperCase()]||0);
 const sortedProducts=()=>[...state.products].sort((a,b)=>kiloRank(b.kilo)-kiloRank(a.kilo)||a.name.localeCompare(b.name));
 const peso=n=>"₱"+Number(n||0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2});
 const todayISO=()=>new Date().toISOString().slice(0,10);
@@ -269,6 +269,10 @@ async function startApp(user){
  document.getElementById("currentUser").textContent=state.user.name;document.getElementById("currentRole").textContent=state.user.role;document.getElementById("avatar").textContent=state.user.name.charAt(0).toUpperCase();
  app.classList.toggle("cashier",state.user.role==="CASHIER");document.getElementById("todayDate").textContent=dateLabel();applyAccess();renderAll();navigate("dashboard");
 }
+await setPersistence(auth,browserSessionPersistence);
+// Require a fresh login whenever the app is opened/reloaded. This clears any
+// previously remembered Firebase user before the authentication listener runs.
+await signOut(auth).catch(err=>console.warn("Could not clear previous login session:",err));
 onAuthStateChanged(auth,user=>{
  if(user){startApp(user);}
  else{
@@ -744,61 +748,25 @@ function showPOSMessage(msg,error=false){const el=document.getElementById("posMe
 function validateProductValues(name,kilo,dealer,retail,stock,min=10,supplierName="",supplierAddress="",supplierContact=""){
  const cleanName=String(name||"").trim(),cleanKilo=String(kilo||"").trim().toUpperCase();
  if(!cleanName){alert("Product name is required.");return null}
- if(!["25KG","10KG","5KG","4KG","3KG","2KG","1KG"].includes(cleanKilo)){alert("Pumili ng valid na KILO size.");return null}
+ if(!["25KG","10KG","5KG","1KG"].includes(cleanKilo)){alert("Pumili ng valid na KILO size.");return null}
  if(!Number.isFinite(dealer)||dealer<0||!Number.isFinite(retail)||retail<0||!Number.isFinite(stock)||stock<0||!Number.isFinite(min)||min<0){alert("Dealer Price, Retail Price, Stock and Buffer must be valid non-negative numbers.");return null}
  return {name:cleanName,kilo:cleanKilo,dealer,retail,stock,min,supplierName:String(supplierName||"").trim(),supplierAddress:String(supplierAddress||"").trim(),supplierContact:String(supplierContact||"").trim()};
 }
 function productFormHtml(p={name:"",kilo:"25KG",dealer:0,retail:0,stock:0,min:10,supplierName:"",supplierAddress:"",supplierContact:""}){
  const suppliers=[...new Set(state.products.map(x=>String(x.supplierName||"").trim()).filter(Boolean))];
- const sizes=["25KG","10KG","5KG","4KG","3KG","2KG","1KG"];
+ const sizes=["25KG","10KG","5KG","1KG"];
  return `<form id="productForm" class="modal-form product-modal-form"><div class="form-grid modal-form-grid product-modal-grid"><div><label>Supplier Name</label><input id="modalSupplierName" list="supplierOptions" value="${escapeHtml(p.supplierName||"")}" autocomplete="off"><datalist id="supplierOptions">${suppliers.map(n=>`<option value="${escapeHtml(n)}"></option>`).join("")}</datalist></div><div><label>Supplier Address</label><input id="modalSupplierAddress" value="${escapeHtml(p.supplierAddress||"")}"></div><div><label>Supplier Contact No.</label><input id="modalSupplierContact" value="${escapeHtml(p.supplierContact||"")}"></div><div><label>Product</label><input id="modalProductName" required value="${escapeHtml(p.name)}"></div><div><label>KILO</label><select id="modalProductKilo">${sizes.map(k=>`<option value="${k}" ${String(p.kilo).toUpperCase()===k?"selected":""}>${k}</option>`).join("")}</select></div><div><label>Dealer Price</label><input id="modalDealer" type="number" min="0" step="0.01" required value="${Number(p.dealer)||0}"></div><div><label>Retail Price</label><input id="modalRetail" type="number" min="0" step="0.01" required value="${Number(p.retail)||0}"></div><div><label>Stock</label><input id="modalStock" type="number" min="0" step="1" required value="${Number(p.stock)||0}"></div><div><label>Buffer</label><input id="modalMin" type="number" min="0" step="1" required value="${Number(p.min)||0}"></div></div><div class="modal-actions"><button type="button" class="primary-btn secondary-btn" data-modal-close>Cancel</button><button class="primary-btn" type="submit">Save</button></div></form>`;
 }
 function addProduct(){
  if(!requireAdmin("add products"))return;
  openModal("Add Product","Enter all product details.",productFormHtml());
- wireSupplierAutofill();
  document.getElementById("productForm").addEventListener("submit",e=>{e.preventDefault();saveProductFromModal(null)});
 }
 function editProduct(id=selectedProductId){
  if(!requireAdmin("edit products"))return;
  const p=state.products.find(x=>Number(x.id)===Number(id));if(!p){alert("Pumili muna ng product sa table.");return}
  openModal("Edit Product","All editable product details are shown below.",productFormHtml(p));
- wireSupplierAutofill(p);
  document.getElementById("productForm").addEventListener("submit",e=>{e.preventDefault();saveProductFromModal(p)});
-}
-function wireSupplierAutofill(existing=null){
- const nameInput=document.getElementById("modalSupplierName");
- const addressInput=document.getElementById("modalSupplierAddress");
- const contactInput=document.getElementById("modalSupplierContact");
- if(!nameInput||!addressInput||!contactInput)return;
- const normalize=value=>String(value||"").trim().toLocaleLowerCase();
- const findSupplier=name=>{
-  const wanted=normalize(name);
-  if(!wanted)return null;
-  const matches=state.products.filter(p=>normalize(p.supplierName)===wanted);
-  matches.sort((a,b)=>(Number(Boolean(b.supplierAddress))+Number(Boolean(b.supplierContact)))-(Number(Boolean(a.supplierAddress))+Number(Boolean(a.supplierContact))));
-  return matches.find(p=>p.supplierAddress||p.supplierContact)||matches[0]||null;
- };
- const autofill=()=>{
-  const supplier=findSupplier(nameInput.value);
-  if(!supplier)return;
-  addressInput.value=supplier.supplierAddress||"";
-  contactInput.value=supplier.supplierContact||"";
-  addressInput.dataset.autofilled="1";
-  contactInput.dataset.autofilled="1";
- };
- nameInput.addEventListener("change",autofill);
- nameInput.addEventListener("input",()=>{
-  const supplier=findSupplier(nameInput.value);
-  if(supplier)autofill();
-  else if(addressInput.dataset.autofilled==="1"&&contactInput.dataset.autofilled==="1"){
-   addressInput.value="";
-   contactInput.value="";
-   delete addressInput.dataset.autofilled;
-   delete contactInput.dataset.autofilled;
-  }
- });
- if(nameInput.value.trim())autofill();
 }
 function saveProductFromModal(existing){
  const values=validateProductValues(document.getElementById("modalProductName").value,document.getElementById("modalProductKilo").value,Number(document.getElementById("modalDealer").value),Number(document.getElementById("modalRetail").value),Number(document.getElementById("modalStock").value),Number(document.getElementById("modalMin").value),document.getElementById("modalSupplierName").value,document.getElementById("modalSupplierAddress").value,document.getElementById("modalSupplierContact").value);if(!values)return;
@@ -842,7 +810,7 @@ function showPaymentHistory(){
 async function clearDatabase(){
  if(state.user?.role!=="ADMIN" || String(auth.currentUser?.email||"").trim().toLowerCase()!==ADMIN_EMAIL){alert("ADMIN access only. Hindi ka awtorisadong mag-clear ng database.");return;}
  if(!cloudReady || !auth.currentUser){alert("Hindi pa handa ang koneksyon sa Firestore. Walang binagong data.");return;}
- if(!confirm("BABALA: Buburahin nito ang LAHAT ng shared business data sa Firebase: Products, Customers, Sales, Orders, Expenses, Purchases, Payment History at Panukli. Hindi ito basta maibabalik maliban kung may backup. Gusto mo bang magpatuloy?"))return;
+ if(!confirm("BABALA: Buburahin nito ang LAHAT ng shared business data sa Firebase: Products, Customers, Sales, Orders, Expenses, Purchases, Payment History at Panukli. Hindi ito basta maibabalik maliban kung may backup.\\n\\nGusto mo bang magpatuloy?"))return;
  const btn=document.getElementById("clearDatabaseBtn");
  if(btn){btn.disabled=true;btn.textContent="Backing up...";}
  try{
