@@ -388,3 +388,19 @@
   .sidebar-brand small{display:none}
   .nav-item,.logout-btn{min-height:28px;padding:5px 9px;font-size:11px}
 }
+
+/* Products table: show Retail Price and Tubo together without forcing laptop-wide scrolling. */
+#products .table-wrap{overflow:auto;max-height:calc(100vh - 205px);}
+#products .table-wrap table{width:100%;min-width:0;table-layout:fixed;}
+#products .table-wrap th,#products .table-wrap td{padding:9px 7px;font-size:11px;overflow:hidden;text-overflow:ellipsis;}
+#products .table-wrap th{font-size:10px;}
+#products .table-wrap th:nth-child(2),#products .table-wrap td:nth-child(2){width:13%;}
+#products .table-wrap th:nth-child(3),#products .table-wrap td:nth-child(3){width:13%;}
+#products .table-wrap th:nth-child(4),#products .table-wrap td:nth-child(4){width:10%;}
+#products .table-wrap th:nth-child(5),#products .table-wrap td:nth-child(5){width:15%;}
+#products .table-wrap th:nth-child(6),#products .table-wrap td:nth-child(6){width:7%;}
+#products .table-wrap th:nth-child(7),#products .table-wrap td:nth-child(7),
+#products .table-wrap th:nth-child(8),#products .table-wrap td:nth-child(8),
+#products .table-wrap th:nth-child(9),#products .table-wrap td:nth-child(9){width:10%;}
+#products .table-wrap th:nth-child(10),#products .table-wrap td:nth-child(10){width:12%;}
+@media(max-width:900px){#products .table-wrap table{min-width:760px;table-layout:auto;}}
