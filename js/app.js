@@ -434,7 +434,7 @@ function renderDashboard(){
  const sales=today.reduce((a,s)=>a+s.total,0),profit=today.reduce((a,s)=>a+s.profit,0),exp=expenses.reduce((a,e)=>a+e.amount,0);
  document.getElementById("salesValue").textContent=peso(sales);document.getElementById("profitValue").textContent=peso(profit);document.getElementById("expensesValue").textContent=peso(exp);
  const low=state.products.filter(p=>p.stock<=p.min);document.getElementById("lowStockValue").textContent=low.length;
- const by=s=>state.products.filter(p=>p.kilo===s).reduce((a,p)=>a+p.stock,0);document.getElementById("stock25").textContent=by("25KG");document.getElementById("stock10").textContent=by("10KG");document.getElementById("stock5").textContent=by("5KG");
+ const by=s=>state.products.filter(p=>String(p.kilo||"").toUpperCase()===s).reduce((a,p)=>a+(Number(p.stock)||0),0);document.getElementById("stock25").textContent=by("25KG");document.getElementById("stock10").textContent=by("10KG");document.getElementById("stock5").textContent=by("5KG");document.getElementById("stock1").textContent=by("1KG");
  document.getElementById("lowStockList").innerHTML=low.length?low.map(p=>`<div class="low-item"><strong>${p.name} (${p.kilo})</strong><span>${p.stock} pcs.</span></div>`).join(""):`<div class="low-item"><strong>No low stock items</strong><span>Good</span></div>`;
  document.getElementById("panukliDashboard").textContent=peso(state.panukli);
 }
