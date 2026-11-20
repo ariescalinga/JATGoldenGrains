@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JAT Golden Grains Trading</title>
-  <link rel="stylesheet" href="css/style.css?v=20261016">
+  <link rel="stylesheet" href="css/style.css?v=20261028-tubo-cart-fix">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -104,6 +104,7 @@
               <div class="stock-card"><span>25KG</span><strong id="stock25">0</strong><small>pcs.</small></div>
               <div class="stock-card"><span>10KG</span><strong id="stock10">0</strong><small>pcs.</small></div>
               <div class="stock-card"><span>5KG</span><strong id="stock5">0</strong><small>pcs.</small></div>
+              <div class="stock-card"><span>1KG</span><strong id="stock1">0</strong><small>pcs.</small></div>
             </div>
           </article>
           <article class="panel">
@@ -133,7 +134,7 @@
               <button id="addToCart" class="primary-btn cart-top-add">+ Add to Cart</button>
             </div>
             <div class="cart-add-grid">
-              <div><label>Scan Barcode</label><input id="posBarcodeScan" type="text" placeholder="Scan barcode then press Enter" autocomplete="off"></div><div><label>Product</label><select id="posProduct"></select></div>
+              <div><label>Product</label><select id="posProduct"></select></div>
               <div><label>Qty.</label><input id="posQty" type="number" min="1" value="1"></div>
               <div><label>Price</label><input id="posPrice" type="number" min="0" step="0.01"></div>
             </div>
@@ -156,7 +157,7 @@
       <section id="products" class="page-section admin-only-section">
         <div class="section-heading"><div><h3>Mga Produkto</h3><p>Manage dealer and retail prices and stock.</p></div><div class="button-group product-action-buttons"><button id="addProductBtn" class="primary-btn">+ Add Product</button><button id="editProductBtn" class="primary-btn secondary-btn" disabled>Edit</button><button id="deleteProductBtn" class="danger-btn" disabled>Delete</button></div></div>
         <div class="panel table-wrap">
-          <table><thead><tr><th>ID</th><th>Supplier Name</th><th>Address</th><th>Contact No.</th><th>Product</th><th>KILO</th><th>Barcode</th><th>Dealer Price</th><th>Retail Price</th><th>Stock</th></tr></thead>
+          <table><thead><tr><th>ID</th><th>Supplier Name</th><th>Address</th><th>Contact No.</th><th>Product</th><th>KILO</th><th>Dealer Price</th><th>Retail Price</th><th>Tubo</th><th>Stock</th></tr></thead>
           <tbody id="productsTable"></tbody></table>
         </div>
       </section>
@@ -208,7 +209,6 @@
       <div id="modalBody" class="modal-body"></div>
     </div>
   </div>
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-  <script type="module" src="js/app.js?v=20261120-barcode"></script>
+  <script type="module" src="js/app.js?v=20261028-tubo-cart-fix"></script>
 </body>
 </html>
