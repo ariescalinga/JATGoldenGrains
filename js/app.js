@@ -4,7 +4,7 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "
 
 // JAT Golden Grains Trading — Firebase shared database configuration.
 const firebaseConfig = {
-  apiKey: "AIzaSyBluaKKFE9CIyoF78eFNNZQNzlgyBbgmsQ",
+  apiKey: "AIzaSyBluaKKFE9CIyoF78eFNNZQNzlgyBbgms",
   authDomain: "jatgoldengrains.firebaseapp.com",
   projectId: "jatgoldengrains",
   storageBucket: "jatgoldengrains.firebasestorage.app",
@@ -160,7 +160,8 @@ const normalizeState=()=>{
       min:Number(min)||10,
       supplierName:String(supplierName).trim(),
       supplierAddress:String(supplierAddress).trim(),
-      supplierContact:String(supplierContact).trim()
+      supplierContact:String(supplierContact).trim(),
+      barcode:String(firstValue(p.barcode,p.barCode,p.ean,p.upc,p['Barcode'],'')).trim()
     };
   });
 
@@ -434,13 +435,13 @@ function renderDashboard(){
  const sales=today.reduce((a,s)=>a+s.total,0),profit=today.reduce((a,s)=>a+s.profit,0),exp=expenses.reduce((a,e)=>a+e.amount,0);
  document.getElementById("salesValue").textContent=peso(sales);document.getElementById("profitValue").textContent=peso(profit);document.getElementById("expensesValue").textContent=peso(exp);
  const low=state.products.filter(p=>p.stock<=p.min);document.getElementById("lowStockValue").textContent=low.length;
- const by=s=>state.products.filter(p=>String(p.kilo||"").toUpperCase()===s).reduce((a,p)=>a+(Number(p.stock)||0),0);document.getElementById("stock25").textContent=by("25KG");document.getElementById("stock10").textContent=by("10KG");document.getElementById("stock5").textContent=by("5KG");document.getElementById("stock1").textContent=by("1KG");
+ const by=s=>state.products.filter(p=>p.kilo===s).reduce((a,p)=>a+p.stock,0);document.getElementById("stock25").textContent=by("25KG");document.getElementById("stock10").textContent=by("10KG");document.getElementById("stock5").textContent=by("5KG");
  document.getElementById("lowStockList").innerHTML=low.length?low.map(p=>`<div class="low-item"><strong>${p.name} (${p.kilo})</strong><span>${p.stock} pcs.</span></div>`).join(""):`<div class="low-item"><strong>No low stock items</strong><span>Good</span></div>`;
  document.getElementById("panukliDashboard").textContent=peso(state.panukli);
 }
 function renderProducts(){
  const tbody=document.getElementById("productsTable");
- tbody.innerHTML=sortedProducts().map(p=>`<tr class="product-row${Number(selectedProductId)===Number(p.id)?" selected-row":""}" data-product-id="${p.id}" tabindex="0"><td>${p.id}</td><td>${escapeHtml(p.supplierName||"—")}</td><td>${escapeHtml(p.supplierAddress||"—")}</td><td>${escapeHtml(p.supplierContact||"—")}</td><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.kilo)}</td><td>${peso(p.dealer)}</td><td>${peso(p.retail)}</td><td>${peso((Number(p.retail)||0)-(Number(p.dealer)||0))}</td><td>${Number(p.stock)||0} pcs.</td></tr>`).join("") || `<tr><td colspan="10" class="empty-cell">No products available.</td></tr>`;
+ tbody.innerHTML=sortedProducts().map(p=>`<tr class="product-row${Number(selectedProductId)===Number(p.id)?" selected-row":""}" data-product-id="${p.id}" tabindex="0"><td>${p.id}</td><td>${escapeHtml(p.supplierName||"—")}</td><td>${escapeHtml(p.supplierAddress||"—")}</td><td>${escapeHtml(p.supplierContact||"—")}</td><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.kilo)}</td><td>${escapeHtml(p.barcode||"—")}</td><td>${peso(p.dealer)}</td><td>${peso(p.retail)}</td><td>${Number(p.stock)||0} pcs.</td></tr>`).join("") || `<tr><td colspan="10" class="empty-cell">No products available.</td></tr>`;
  tbody.querySelectorAll(".product-row").forEach(row=>{
    const select=()=>selectProduct(Number(row.dataset.productId));
    row.addEventListener("click",select);
@@ -688,7 +689,7 @@ function updatePOSTotal(){const total=cartTotal();document.getElementById("posTo
 function updateChange(){const total=cartTotal(),cash=Number(document.getElementById("posCashReceived").value||0);document.getElementById("posChange").textContent=peso(Math.max(0,cash-total))}
 function renderCart(){
  const tbody=document.getElementById("posCartTable"),note=document.getElementById("cartEmptyNote");
- tbody.innerHTML=state.cart.length?state.cart.map((item,i)=>`<tr><td><strong>${escapeHtml(item.name)}</strong><br><small>${escapeHtml(item.kilo)}</small></td><td>${item.qty}</td><td>${peso(item.price)}</td><td>${peso(item.qty*item.price)}</td><td><button type="button" class="cart-remove" data-cart-remove="${i}" aria-label="Remove ${escapeHtml(item.name)} from cart">Remove</button></td></tr>`).join(""):"";
+ tbody.innerHTML=state.cart.length?state.cart.map((item,i)=>`<tr><td><strong>${escapeHtml(item.name)}</strong><br><small>${escapeHtml(item.kilo)}</small></td><td>${item.qty}</td><td>${peso(item.price)}</td><td>${peso(item.qty*item.price)}</td><td><button class="cart-remove" onclick="removeFromCart(${i})">Remove</button></td></tr>`).join(""):"";
  if(note)note.hidden=state.cart.length>0;
  const wrap=document.querySelector(".cart-table-wrap");if(wrap)wrap.classList.toggle("has-items",state.cart.length>0);
  updatePOSTotal();
@@ -702,13 +703,13 @@ function addToCart(){
  if(existing){existing.qty+=qty;existing.price=price}else state.cart.push({productId:p.id,name:p.name,kilo:p.kilo,qty,price});
  renderCart();document.getElementById("posQty").value=1;showPOSMessage(`${p.name} (${p.kilo}) added to cart.`);updatePOSPrice();
 }
-function removeFromCart(index){const i=Number(index);if(!Number.isInteger(i)||i<0||i>=state.cart.length)return;state.cart.splice(i,1);renderCart();updatePOSTotal();showPOSMessage("Product removed from cart.")}
-document.getElementById("posCartTable").addEventListener("click",e=>{const button=e.target.closest("[data-cart-remove]");if(!button)return;removeFromCart(button.dataset.cartRemove)});
+function removeFromCart(index){state.cart.splice(index,1);renderCart();showPOSMessage("Product removed from cart.")}
 function fillCustomerDetails(){
  const input=document.getElementById("posCustomer"),name=input.value.trim().toLowerCase(),c=state.customers.find(x=>x.name.trim().toLowerCase()===name);
  document.getElementById("posContact").value=c?c.contact||"":"";document.getElementById("posAddress").value=c?c.address||"":"";
 }
 function escapeHtml(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]))}
+document.getElementById("posBarcodeScan")?.addEventListener("keydown",e=>{if(e.key!=="Enter")return;e.preventDefault();const input=e.currentTarget,code=input.value.trim();if(!code)return;const p=state.products.find(x=>String(x.barcode||"").trim().toLowerCase()===code.toLowerCase());if(!p){showPOSMessage(`Walang produktong tumutugma sa barcode: ${code}`,true);input.select();return}document.getElementById("posProduct").value=String(p.id);updatePOSPrice();addToCart();input.value="";input.focus()});
 document.getElementById("posProduct").addEventListener("change",updatePOSPrice);
 document.getElementById("posQty").addEventListener("input",()=>{});
 document.getElementById("posPrice").addEventListener("input",()=>{});
@@ -746,45 +747,43 @@ document.getElementById("processSale").addEventListener("click",()=>{
 });
 function showPOSMessage(msg,error=false){const el=document.getElementById("posMessage");el.textContent=msg;el.className=error?"error":"success"}
 
-function validateProductValues(name,kilo,dealer,retail,stock,min=10,supplierName="",supplierAddress="",supplierContact=""){
+function validateProductValues(name,kilo,dealer,retail,stock,min=10,supplierName="",supplierAddress="",supplierContact="",barcode=""){
  const cleanName=String(name||"").trim(),cleanKilo=String(kilo||"").trim().toUpperCase();
  if(!cleanName){alert("Product name is required.");return null}
  if(!["25KG","10KG","5KG","1KG"].includes(cleanKilo)){alert("Pumili ng valid na KILO size.");return null}
  if(!Number.isFinite(dealer)||dealer<0||!Number.isFinite(retail)||retail<0||!Number.isFinite(stock)||stock<0||!Number.isFinite(min)||min<0){alert("Dealer Price, Retail Price, Stock and Buffer must be valid non-negative numbers.");return null}
- return {name:cleanName,kilo:cleanKilo,dealer,retail,stock,min,supplierName:String(supplierName||"").trim(),supplierAddress:String(supplierAddress||"").trim(),supplierContact:String(supplierContact||"").trim()};
+ return {name:cleanName,kilo:cleanKilo,dealer,retail,stock,min,supplierName:String(supplierName||"").trim(),supplierAddress:String(supplierAddress||"").trim(),supplierContact:String(supplierContact||"").trim(),barcode:String(barcode||"").trim()};
 }
-function productFormHtml(p={name:"",kilo:"25KG",dealer:0,retail:0,stock:0,min:10,supplierName:"",supplierAddress:"",supplierContact:""}){
+function productFormHtml(p={name:"",kilo:"25KG",dealer:0,retail:0,stock:0,min:10,supplierName:"",supplierAddress:"",supplierContact:"",barcode:""}){
  const suppliers=[...new Set(state.products.map(x=>String(x.supplierName||"").trim()).filter(Boolean))];
  const sizes=["25KG","10KG","5KG","1KG"];
- return `<form id="productForm" class="modal-form product-modal-form"><div class="form-grid modal-form-grid product-modal-grid"><div><label>Supplier Name</label><input id="modalSupplierName" list="supplierOptions" value="${escapeHtml(p.supplierName||"")}" autocomplete="off"><datalist id="supplierOptions">${suppliers.map(n=>`<option value="${escapeHtml(n)}"></option>`).join("")}</datalist></div><div><label>Supplier Address</label><input id="modalSupplierAddress" value="${escapeHtml(p.supplierAddress||"")}"></div><div><label>Supplier Contact No.</label><input id="modalSupplierContact" value="${escapeHtml(p.supplierContact||"")}"></div><div><label>Product</label><input id="modalProductName" required value="${escapeHtml(p.name)}"></div><div><label>KILO</label><select id="modalProductKilo">${sizes.map(k=>`<option value="${k}" ${String(p.kilo).toUpperCase()===k?"selected":""}>${k}</option>`).join("")}</select></div><div><label>Dealer Price</label><input id="modalDealer" type="number" min="0" step="0.01" required value="${Number(p.dealer)||0}"></div><div><label>Retail Price</label><input id="modalRetail" type="number" min="0" step="0.01" required value="${Number(p.retail)||0}"></div><div><label>Stock</label><input id="modalStock" type="number" min="0" step="1" required value="${Number(p.stock)||0}"></div><div><label>Buffer</label><input id="modalMin" type="number" min="0" step="1" required value="${Number(p.min)||0}"></div></div><div class="modal-actions"><button type="button" class="primary-btn secondary-btn" data-modal-close>Cancel</button><button class="primary-btn" type="submit">Save</button></div></form>`;
+ return `<form id="productForm" class="modal-form product-modal-form"><div class="form-grid modal-form-grid product-modal-grid"><div><label>Supplier Name</label><input id="modalSupplierName" list="supplierOptions" value="${escapeHtml(p.supplierName||"")}" autocomplete="off"><datalist id="supplierOptions">${suppliers.map(n=>`<option value="${escapeHtml(n)}"></option>`).join("")}</datalist></div><div><label>Supplier Address</label><input id="modalSupplierAddress" value="${escapeHtml(p.supplierAddress||"")}"></div><div><label>Supplier Contact No.</label><input id="modalSupplierContact" value="${escapeHtml(p.supplierContact||"")}"></div><div><label>Product</label><input id="modalProductName" required value="${escapeHtml(p.name)}"></div><div><label>KILO</label><select id="modalProductKilo">${sizes.map(k=>`<option value="${k}" ${String(p.kilo).toUpperCase()===k?"selected":""}>${k}</option>`).join("")}</select></div><div><label>Dealer Price</label><input id="modalDealer" type="number" min="0" step="0.01" required value="${Number(p.dealer)||0}"></div><div><label>Retail Price</label><input id="modalRetail" type="number" min="0" step="0.01" required value="${Number(p.retail)||0}"></div><div><label>Stock</label><input id="modalStock" type="number" min="0" step="1" required value="${Number(p.stock)||0}"></div><div><label>Buffer</label><input id="modalMin" type="number" min="0" step="1" required value="${Number(p.min)||0}"></div><div class="barcode-form-field"><label>Barcode</label><div class="barcode-entry"><input id="modalBarcode" value="${escapeHtml(p.barcode||makeProductBarcode(p.id))}" placeholder="Scan or enter barcode"><button type="button" id="generateBarcodeBtn" class="primary-btn secondary-btn">Generate</button></div><small>Optional kung wala pang barcode ang produkto.</small><svg id="productBarcodePreview"></svg><button type="button" id="printBarcodeBtn" class="text-btn">Print Barcode Label</button></div></div><div class="modal-actions"><button type="button" class="primary-btn secondary-btn" data-modal-close>Cancel</button><button class="primary-btn" type="submit">Save</button></div></form>`;
 }
-function bindSupplierAutofill(){
- const nameInput=document.getElementById("modalSupplierName"),addressInput=document.getElementById("modalSupplierAddress"),contactInput=document.getElementById("modalSupplierContact");
- if(!nameInput||!addressInput||!contactInput)return;
- const fillSupplierDetails=()=>{
-  const name=nameInput.value.trim().toLocaleLowerCase();
-  if(!name)return;
-  const match=state.products.find(p=>String(p.supplierName||"").trim().toLocaleLowerCase()===name&&(String(p.supplierAddress||"").trim()||String(p.supplierContact||"").trim()));
-  if(match){addressInput.value=match.supplierAddress||"";contactInput.value=match.supplierContact||"";}
- };
- nameInput.addEventListener("change",fillSupplierDetails);
- nameInput.addEventListener("blur",fillSupplierDetails);
+function makeProductBarcode(id){const n=Number(id)||Math.max(0,...state.products.map(p=>Number(p.id)||0))+1;return `JAT${String(n).padStart(7,"0")}`;}
+function drawBarcode(value,target){if(!target)return;if(!value){target.innerHTML="";return}if(window.JsBarcode){try{window.JsBarcode(target,value,{format:"CODE128",displayValue:true,fontSize:14,height:48,margin:5});}catch(e){target.innerHTML=""}}}
+function setupBarcodeForm(){
+ const input=document.getElementById("modalBarcode"),preview=document.getElementById("productBarcodePreview");if(!input)return;
+ const refresh=()=>drawBarcode(input.value.trim(),preview);input.addEventListener("input",refresh);refresh();
+ document.getElementById("generateBarcodeBtn")?.addEventListener("click",()=>{input.value=makeProductBarcode();refresh()});
+ document.getElementById("printBarcodeBtn")?.addEventListener("click",()=>{if(!input.value.trim()){alert("Maglagay o gumawa muna ng barcode.");return}const pName=document.getElementById("modalProductName").value||"Product",svg=preview?.outerHTML||"";const w=window.open("","_blank","width=420,height=300");if(!w){alert("Payagan ang pop-up upang makapag-print ng barcode.");return}w.document.write(`<html><head><title>Barcode Label</title><style>body{font-family:Arial;text-align:center;padding:18px}.label{width:300px;margin:auto;border:1px dashed #aaa;padding:12px}svg{max-width:100%}@media print{body{padding:0}.label{border:0}}</style></head><body><div class="label"><strong>${escapeHtml(pName)}</strong>${svg}</div><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close()});
 }
 function addProduct(){
  if(!requireAdmin("add products"))return;
  openModal("Add Product","Enter all product details.",productFormHtml());
- bindSupplierAutofill();
+ setupBarcodeForm();
  document.getElementById("productForm").addEventListener("submit",e=>{e.preventDefault();saveProductFromModal(null)});
 }
 function editProduct(id=selectedProductId){
  if(!requireAdmin("edit products"))return;
  const p=state.products.find(x=>Number(x.id)===Number(id));if(!p){alert("Pumili muna ng product sa table.");return}
  openModal("Edit Product","All editable product details are shown below.",productFormHtml(p));
- bindSupplierAutofill();
+ setupBarcodeForm();
  document.getElementById("productForm").addEventListener("submit",e=>{e.preventDefault();saveProductFromModal(p)});
 }
 function saveProductFromModal(existing){
- const values=validateProductValues(document.getElementById("modalProductName").value,document.getElementById("modalProductKilo").value,Number(document.getElementById("modalDealer").value),Number(document.getElementById("modalRetail").value),Number(document.getElementById("modalStock").value),Number(document.getElementById("modalMin").value),document.getElementById("modalSupplierName").value,document.getElementById("modalSupplierAddress").value,document.getElementById("modalSupplierContact").value);if(!values)return;
+ const values=validateProductValues(document.getElementById("modalProductName").value,document.getElementById("modalProductKilo").value,Number(document.getElementById("modalDealer").value),Number(document.getElementById("modalRetail").value),Number(document.getElementById("modalStock").value),Number(document.getElementById("modalMin").value),document.getElementById("modalSupplierName").value,document.getElementById("modalSupplierAddress").value,document.getElementById("modalSupplierContact").value,document.getElementById("modalBarcode").value);if(!values)return;
+ if(!values.barcode)values.barcode=makeProductBarcode(existing?.id);
+ const duplicateBarcode=state.products.find(x=>Number(x.id)!==Number(existing?.id)&&String(x.barcode||"").trim()===values.barcode);if(duplicateBarcode){alert("Ginagamit na ng ibang produkto ang barcode na ito.");return}
  const duplicate=state.products.find(x=>Number(x.id)!==Number(existing?.id)&&x.name.trim().toLowerCase()===values.name.toLowerCase()&&String(x.kilo).toUpperCase()===values.kilo);if(duplicate){alert(`Mayroon nang kaparehong product: ${duplicate.name} (${duplicate.kilo}).`);return}
  if(existing){Object.assign(existing,values);selectedProductId=existing.id}else{const id=state.products.length?Math.max(...state.products.map(p=>Number(p.id)||0))+1:1;state.products.push({id,...values});selectedProductId=id}
  save();closeModal();renderAll();
